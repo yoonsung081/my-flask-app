@@ -1,3 +1,4 @@
+import os
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -18,5 +19,6 @@ def get_airports():
     filtered_airports = [airport for airport in airports if location.lower() in airport['name'].lower()]
     return jsonify(filtered_airports)
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))  # Render에서 지정한 PORT 사용, 없으면 5000
+    app.run(host="0.0.0.0", port=port)
