@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flight Route Optimizer</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body {
+      background: linear-gradient(to right bottom, #f0f0f0, #dcdcdc);
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #ffffff;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .main-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .search-box {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 12px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background-color: #ccc;
+    }
+    .error-message {
+      background-color: #ffdddd;
+      color: #f00;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+    .route-card {
+      background-color: #fff;
+      padding: 15px;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="main-content">
+    <h1>Flight Route Optimizer</h1>
+    <p>최적의 항공 경로를 찾아드립니다</p>
+  </div>
+</header>
+
+<div class="main-content">
+
+  <!-- 검색 폼 -->
+  <div class="search-box">
+    <div>
+      <label for="originInput">출발지 검색</label>
+      <input type="text" id="originInput" placeholder="지역 입력" oninput="searchAirports('origin')">
+      <select id="originSelect"></select>
+    </div>
+    <div>
+      <label for="destinationInput">목적지 검색</label>
+      <input type="text" id="destinationInput" placeholder="지역 입력" oninput="searchAirports('destination')">
+      <select id="destinationSelect"></select>
+    </div>
+    <div>
+      <label for="dateInput">출발일</label>
+      <input type="date" id="dateInput">
+    </div>
+    <div>
+      <label for="passengersInput">탑승객 수</label>
+      <input type="number" id="passengersInput" value="1" min="1">
+    </div>
+    <button onclick="searchFlights()">항공편 검색</button>
+  </div>
+
+  <!-- 에러 메시지 -->
+  <div id="errorMessage" class="error-message" style="display:none;"></div>
+
+  <!-- 검색 결과 -->
+  <div id="searchResults"></div>
+
+</div>
+
+<script>
+const API_BASE = 'https://my-flask-app-2mc2.onrender.com';
+
+// ---------------------------
+// 1️⃣ 공항 검색 함수
+// ---------------------------
+async function searchAirports(type) {
+  const input = document.getElementById(type + 'Input').value;
+  const select = document.getElementById(type + 'Select');
+
+  if (input.length < 2) {
+    select.innerHTML = '';
+    return;
+  }
+
+  try {
+    const res = await axios.get(`${API_BASE}/airports?location=${input}`);
+    const airports = res.data;
+
+    select.innerHTML = airports.map(a => `<option value="${a.code}">${a.name} (${a.code})</option>`).join('');
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// ---------------------------
+// 2️⃣ 항공편 검색 & 최적화
+// ---------------------------
+async function searchFlights() {
+  const origin = document.getElementById('originSelect').value;
+  const destination = document.getElementById('destinationSelect').value;
+  const date = document.getElementById('dateInput').value;
+  const passengers = document.getElementById('passengersInput').value;
+  const errorDiv = document.getElementById('errorMessage');
+  const resultsDiv = document.getElementById('searchResults');
+
+  errorDiv.style.display = 'none';
+  resultsDiv.innerHTML = '';
+
+  if (!origin || !destination || !date) {
+    errorDiv.textContent = '출발지, 목적지, 날짜를 모두 입력해주세요.';
+    errorDiv.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await axios.get(`${API_BASE}/search_flights`, {
+      params: { origin, destination, date, passengers }
+    });
+
+    const flight = res.data;
+
+    if (!flight || flight.error) {
+      resultsDiv.innerHTML = `<p>검색 결과가 없습니다.</p>`;
+      return;
+    }
+
+    resultsDiv.innerHTML = `
+      <div class="route-card">
+        <p><strong>항공편:</strong> ${flight.flight.iataNumber}</p>
+        <p><strong>출발:</strong> ${flight.schedule.departureTime} (${flight.departure.iataCode})</p>
+        <p><strong>도착:</strong> ${flight.schedule.arrivalTime} (${flight.arrival.iataCode})</p>
+        <p><strong>항공사:</strong> ${flight.airline.name}</p>
+      </div>
+    `;
+
+  } catch (err) {
+    console.error(err);
+    errorDiv.textContent = '항공편 검색 중 오류가 발생했습니다.';
+    errorDiv.style.display = 'block';
+  }
+}
+</script>
+
+</body>
+</html>
