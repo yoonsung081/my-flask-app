@@ -22,6 +22,10 @@ def load_airports_from_csv():
         print(f"CSV 파일 읽기 중 오류가 발생했습니다: {e}")
     return airports
 
+@app.route("/")
+def home():
+    return "Welcome to the Flight Route Optimizer API!"
+
 @app.route("/airports", methods=["GET"])
 def get_airports():
     airports = load_airports_from_csv()  # CSV에서 공항 데이터 불러오기
