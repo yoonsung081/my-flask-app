@@ -1,27 +1,35 @@
 import csv
+import os
 from flask import Flask, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
 
-# CORS 설정
-CORS(app, origins=["http://127.0.0.1:5500"])  # 로컬 서버에서 접근 허용
+# CORS 설정: 모든 출처에서 접근 가능 (개발용)
+CORS(app, origins=["http://127.0.0.1:5500", "http://localhost:5500"])
 
 # 공항 데이터 파일 경로 (CSV)
-AIRPORTS_FILE_PATH = 'airports.csv'
+AIRPORTS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'airports.csv')
 
 # CSV에서 공항 데이터 로드
 def load_airports_from_csv():
     airports = []
-    with open(AIRPORTS_FILE_PATH, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            airports.append(row)  # 각 행을 공항 정보로 추가
+    try:
+        with open(AIRPORTS_FILE_PATH, mode='r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                airports.append(row)  # 각 행을 공항 정보로 추가
+    except FileNotFoundError:
+        return {"error": "CSV file not found"}
+    except Exception as e:
+        return {"error": str(e)}
     return airports
 
 @app.route("/airports", methods=["GET"])
 def get_airports():
     airports = load_airports_from_csv()  # CSV에서 공항 데이터 불러오기
+    if "error" in airports:
+        return jsonify(airports), 500  # 에러 처리
     return jsonify(airports)
 
 if __name__ == "__main__":
