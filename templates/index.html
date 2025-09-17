@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight Route Optimizer</title>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Quicksand:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    /* 전체 레이아웃 스타일 */
+    /* 스타일 */
     body {
       background: linear-gradient(to bottom right, #6a11cb, #2575fc);
       font-family: 'Quicksand', sans-serif;
@@ -18,10 +17,10 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      flex-direction: column;
       overflow: hidden;
     }
 
-    /* 헤더 스타일 */
     header {
       text-align: center;
       margin-bottom: 40px;
@@ -41,7 +40,6 @@
       opacity: 0.9;
     }
 
-    /* 검색 박스 스타일 */
     .search-box {
       background-color: rgba(255, 255, 255, 0.2);
       border-radius: 15px;
@@ -86,10 +84,13 @@
       background: linear-gradient(to right, #2575fc, #6a11cb);
     }
 
-    /* 공항 리스트 및 에러 메시지 스타일 */
-    .airport-list, .error-message {
-      text-align: center;
-      margin-top: 20px;
+    .error-message {
+      background-color: #ff4d4d;
+      color: white;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      display: none;
     }
 
     .airport-item {
@@ -101,29 +102,22 @@
       font-weight: 500;
     }
 
-    .error-message {
-      background-color: #ff4d4d;
-      color: white;
-      padding: 10px;
-      border-radius: 8px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-      display: none;
-    }
-
-    /* 로딩 애니메이션 */
-    .loader {
+    /* 비행기 애니메이션 */
+    #airplane {
+      position: absolute;
       width: 50px;
       height: 50px;
-      border: 5px solid #f0f0f0;
-      border-top: 5px solid #2575fc;
+      background-color: red;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 20px auto;
+      transition: transform 5s ease-in-out;
     }
 
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    /* 경로 시각화 애니메이션 */
+    #route {
+      position: absolute;
+      width: 2px;
+      background-color: #fff;
+      transition: height 5s ease-in-out;
     }
 
   </style>
@@ -136,58 +130,67 @@
   </header>
 
   <div class="search-box">
-    <label for="location">지역 검색</label>
-    <input type="text" id="location" placeholder="지역을 입력하세요" oninput="searchAirports()">
-    <button id="searchButton" onclick="handleSearch()">항공편 검색</button>
-    
-    <!-- 로딩 애니메이션 -->
-    <div id="loading" class="loader" style="display: none;"></div>
+    <!-- 출발지 공항 선택 -->
+    <label for="airportSelect">출발 공항 선택</label>
+    <select id="airportSelect"></select>
+
+    <!-- 목적지 공항 선택 -->
+    <label for="destinationSelect">목적지 공항 선택</label>
+    <select id="destinationSelect"></select>
+
+    <!-- 검색 버튼 -->
+    <button onclick="handleSearch()">항공편 검색</button>
 
     <!-- 에러 메시지 -->
     <div id="errorMessage" class="error-message"></div>
-
-    <!-- 공항 리스트 -->
-    <div id="airportList" class="airport-list"></div>
   </div>
 
-  <script>
-    const API_BASE = 'https://my-flask-app-2mc2.onrender.com'; // 변경
+  <!-- 비행기 애니메이션 요소 -->
+  <div id="airplane"></div>
+  <div id="route"></div>
 
+  <script>
     let airports = [];
 
-    // 지역 검색 후 공항 목록 띄우기
-    async function searchAirports() {
-      const location = document.getElementById('location').value;
-
-      if (location.length < 3) {
-        document.getElementById('airportList').innerHTML = '';
-        return;
-      }
-
+    // JSON 파일을 로드하는 함수
+    async function loadAirports() {
       try {
-        const response = await fetch(`${API_BASE}/airports?country=${location}`);
-        const data = await response.json();
-        airports = data;
-        displayAirports();
+        // JSON 파일을 직접 읽어옴
+        const response = await fetch('airports.json');  // JSON 파일 경로로 수정
+        airports = await response.json();
+
+        const selectElement = document.getElementById('airportSelect');
+        const destinationElement = document.getElementById('destinationSelect');
+
+        // 공항 목록을 출발지와 목적지 선택 옵션에 추가
+        airports.forEach(airport => {
+          const option = document.createElement('option');
+          option.value = airport.code;
+          option.textContent = `${airport.name} (${airport.code})`;
+
+          selectElement.appendChild(option);
+          destinationElement.appendChild(option.cloneNode(true)); // 같은 공항을 목적지에도 추가
+        });
+
       } catch (err) {
         console.error('공항 데이터 로드 실패:', err);
         showErrorMessage('공항 데이터를 불러올 수 없습니다.');
       }
     }
 
-    // 공항 목록을 화면에 표시
-    function displayAirports() {
-      const airportListContainer = document.getElementById('airportList');
-      if (airports.length === 0) {
-        airportListContainer.innerHTML = '<p>근처 공항이 없습니다.</p>';
+    // 검색 버튼 클릭 시 검색 처리
+    function handleSearch() {
+      const origin = document.getElementById('airportSelect').value;
+      const destination = document.getElementById('destinationSelect').value;
+
+      if (!origin || !destination) {
+        showErrorMessage('출발지와 목적지를 선택해주세요.');
         return;
       }
 
-      airportListContainer.innerHTML = airports.map(airport => `
-        <div class="airport-item">
-          <strong>${airport.code} - ${airport.name}</strong>
-        </div>
-      `).join('');
+      console.log(`출발지: ${origin}, 목적지: ${destination}`);
+      // 경로 계산 처리 후 애니메이션 시작
+      animateRoute(origin, destination);
     }
 
     // 에러 메시지 표시
@@ -197,23 +200,36 @@
       errorMessage.style.display = 'block';
     }
 
-    // 검색 버튼 클릭 시 검색 처리
-    function handleSearch() {
-      const location = document.getElementById('location').value;
-      if (!location) {
-        showErrorMessage('지역을 입력하세요.');
-        return;
-      }
+    // 경로 애니메이션
+    function animateRoute(origin, destination) {
+      const originAirport = airports.find(airport => airport.code === origin);
+      const destinationAirport = airports.find(airport => airport.code === destination);
 
-      // 로딩 애니메이션 표시
-      document.getElementById('loading').style.display = 'block';
+      // 비행기 애니메이션 및 경로 시각화
+      const airplane = document.getElementById('airplane');
+      const route = document.getElementById('route');
 
-      // 검색 API 호출
-      searchAirports();
+      // 출발지와 목적지 좌표 계산
+      const x1 = originAirport.longitude;
+      const y1 = originAirport.latitude;
+      const x2 = destinationAirport.longitude;
+      const y2 = destinationAirport.latitude;
 
-      // 로딩 애니메이션 숨기기
-      document.getElementById('loading').style.display = 'none';
+      // 비행기 위치 설정 (출발지)
+      airplane.style.left = `${(x1 + 180) * 2}%`;
+      airplane.style.top = `${(90 - y1) * 2}%`;
+
+      // 경로 설정 (출발지에서 목적지까지)
+      route.style.left = `${(x1 + 180) * 2}%`;
+      route.style.top = `${(90 - y1) * 2}%`;
+      route.style.height = `${Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)) * 2}%`;
+
+      // 비행기 애니메이션 (목적지까지 이동)
+      airplane.style.transform = `translate(${(x2 - x1) * 2}%, ${(90 - y2 - y1) * 2}%)`;
     }
+
+    // 페이지 로드시 공항 목록 불러오기
+    window.onload = loadAirports;
   </script>
 
 </body>
