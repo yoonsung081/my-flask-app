@@ -101,24 +101,6 @@
       font-weight: 500;
     }
 
-    /* 비행기 애니메이션 */
-    #airplane {
-      position: absolute;
-      width: 50px;
-      height: 50px;
-      background-color: red;
-      border-radius: 50%;
-      transition: transform 5s ease-in-out;
-    }
-
-    /* 경로 시각화 애니메이션 */
-    #route {
-      position: absolute;
-      width: 2px;
-      background-color: #fff;
-      transition: height 5s ease-in-out;
-    }
-
   </style>
 </head>
 <body>
@@ -143,10 +125,6 @@
     <!-- 에러 메시지 -->
     <div id="errorMessage" class="error-message"></div>
   </div>
-
-  <!-- 비행기 애니메이션 요소 -->
-  <div id="airplane"></div>
-  <div id="route"></div>
 
   <script>
     let airports = [];
@@ -188,8 +166,6 @@
       }
 
       console.log(`출발지: ${origin}, 목적지: ${destination}`);
-      // 경로 계산 처리 후 애니메이션 시작
-      animateRoute(origin, destination);
     }
 
     // 에러 메시지 표시
@@ -197,34 +173,6 @@
       const errorMessage = document.getElementById('errorMessage');
       errorMessage.textContent = message;
       errorMessage.style.display = 'block';
-    }
-
-    // 경로 애니메이션
-    function animateRoute(origin, destination) {
-      const originAirport = airports.find(airport => airport.code === origin);
-      const destinationAirport = airports.find(airport => airport.code === destination);
-
-      // 비행기 애니메이션 및 경로 시각화
-      const airplane = document.getElementById('airplane');
-      const route = document.getElementById('route');
-
-      // 출발지와 목적지 좌표 계산
-      const x1 = parseFloat(originAirport.longitude);
-      const y1 = parseFloat(originAirport.latitude);
-      const x2 = parseFloat(destinationAirport.longitude);
-      const y2 = parseFloat(destinationAirport.latitude);
-
-      // 비행기 위치 설정 (출발지)
-      airplane.style.left = `${(x1 + 180) * 2}%`;
-      airplane.style.top = `${(90 - y1) * 2}%`;
-
-      // 경로 설정 (출발지에서 목적지까지)
-      route.style.left = `${(x1 + 180) * 2}%`;
-      route.style.top = `${(90 - y1) * 2}%`;
-      route.style.height = `${Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)) * 2}%`;
-
-      // 비행기 애니메이션 (목적지까지 이동)
-      airplane.style.transform = `translate(${(x2 - x1) * 2}%, ${(90 - y2 - y1) * 2}%)`;
     }
 
     // 페이지 로드시 공항 목록 불러오기
