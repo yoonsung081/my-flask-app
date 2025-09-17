@@ -152,12 +152,13 @@
   <script>
     let airports = [];
 
-    // JSON 파일을 로드하는 함수
+    // CSV 파일을 로드하는 함수
     async function loadAirports() {
       try {
-        // JSON 파일을 직접 읽어옴
-        const response = await fetch('airports.json');  // JSON 파일 경로로 수정
-        airports = await response.json();
+        // CSV 파일을 읽어옴
+        const response = await fetch('airports.csv');  // CSV 파일 경로로 수정
+        const text = await response.text();
+        airports = parseCSV(text);  // CSV 텍스트를 파싱하여 JSON 형태로 변환
 
         const selectElement = document.getElementById('airportSelect');
         const destinationElement = document.getElementById('destinationSelect');
@@ -176,6 +177,26 @@
         console.error('공항 데이터 로드 실패:', err);
         showErrorMessage('공항 데이터를 불러올 수 없습니다.');
       }
+    }
+
+    // CSV 텍스트를 파싱하여 JSON 형태로 변환
+    function parseCSV(csvText) {
+      const lines = csvText.split('\n');
+      const result = [];
+      const headers = lines[0].split(','); // CSV 첫 번째 줄에서 헤더 추출
+
+      for (let i = 1; i < lines.length; i++) {
+        const currentLine = lines[i].split(',');
+        const airport = {};
+
+        headers.forEach((header, index) => {
+          airport[header.trim()] = currentLine[index].trim();
+        });
+
+        result.push(airport);
+      }
+
+      return result;
     }
 
     // 검색 버튼 클릭 시 검색 처리
@@ -210,10 +231,10 @@
       const route = document.getElementById('route');
 
       // 출발지와 목적지 좌표 계산
-      const x1 = originAirport.longitude;
-      const y1 = originAirport.latitude;
-      const x2 = destinationAirport.longitude;
-      const y2 = destinationAirport.latitude;
+      const x1 = parseFloat(originAirport.longitude);
+      const y1 = parseFloat(originAirport.latitude);
+      const x2 = parseFloat(destinationAirport.longitude);
+      const y2 = parseFloat(destinationAirport.latitude);
 
       // 비행기 위치 설정 (출발지)
       airplane.style.left = `${(x1 + 180) * 2}%`;
