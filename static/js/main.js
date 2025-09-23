@@ -150,6 +150,19 @@ function simulationLoop() {
 }
 
 // --- 항공기 클래스 --- //
+
+function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
 class Airplane {
     constructor(id) {
         this.id = id;
@@ -161,14 +174,22 @@ class Airplane {
     reset() {
         if (this.marker) this.remove();
 
-        this.origin = airportList[Math.floor(Math.random() * airportList.length)];
-        this.destination = airportList[Math.floor(Math.random() * airportList.length)];
+        let distance = 0;
+        const minDistance = 2000; // 최소 비행 거리 (km)
 
-        while (this.origin.iata_code === this.destination.iata_code) {
+        do {
+            this.origin = airportList[Math.floor(Math.random() * airportList.length)];
             this.destination = airportList[Math.floor(Math.random() * airportList.length)];
-        }
+            
+            if (this.origin && this.destination) {
+                distance = calculateHaversineDistance(
+                    this.origin.latitude, this.origin.longitude,
+                    this.destination.latitude, this.destination.longitude
+                );
+            }
+        } while (!this.origin || !this.destination || this.origin.iata_code === this.destination.iata_code || distance < minDistance);
 
-        log(`[Airplane #${this.id}] 새 경로 할당: ${this.origin.iata_code} → ${this.destination.iata_code}`);
+        log(`[Airplane #${this.id}] 새 경로 할당: ${this.origin.iata_code} → ${this.destination.iata_code} (${Math.round(distance)}km)`);
 
         this.path = getGreatCirclePoints(
             [this.origin.latitude, this.origin.longitude],
