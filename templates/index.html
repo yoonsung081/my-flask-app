@@ -1,140 +1,179 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flight Route Optimizer</title>
-  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-  <style>
-    body {
-      background: linear-gradient(to right bottom, #f0f0f0, #dcdcdc);
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    .main-content {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    .search-box {
-      background-color: #ffffff;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-    select {
-      width: 100%;
-      padding: 12px;
-      margin-bottom: 10px;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-    }
-    button {
-      padding: 12px 20px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:disabled {
-      background-color: #ccc;
-    }
-    .result {
-      margin-top: 20px;
-      font-size: 18px;
-    }
-    .loading {
-      display: none;
-      font-size: 20px;
-      color: #00f;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 항공 네트워크 시뮬레이터</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Poppins:wght@600&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body { background: linear-gradient(to right, #141e30, #243b55); font-family: 'Noto Sans KR', sans-serif; color: #f0f0f0; }
+        .display-5, h1, h2, h3, .accordion-header { font-family: 'Poppins', sans-serif; }
+        .container { max-width: 1200px; }
+        .card { margin-top: 1.5rem; background-color: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); color: #f0f0f0; }
+        #map { height: 600px; width: 100%; margin-top: 1.5rem; border-radius: 0.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); cursor: grab; }
+        .lead { font-weight: 300; color: #a0b0c0; }
+        .btn-primary { background-color: #0056b3; border-color: #0056b3; }
+        .accordion-button { background-color: rgba(255,255,255,0.1); color: #f0f0f0; }
+        .accordion-button:not(.collapsed) { color: #87cefa; background-color: rgba(0,0,0,0.2); }
+        .accordion-body { background-color: rgba(0,0,0,0.2); text-align: left; font-size: 0.95rem; line-height: 1.7; }
+        .form-label { font-weight: 500; }
+        .form-select, .form-range { background-color: rgba(0,0,0,0.2); color: #f0f0f0; border-color: rgba(255,255,255,0.2); }
+        .form-select:focus, .form-range:focus { background-color: rgba(0,0,0,0.3); color: #f0f0f0; border-color: #87cefa; box-shadow: none; }
+        .nav-pills .nav-link { color: #f0f0f0; }
+        .nav-pills .nav-link.active { background-color: rgba(255,255,255,0.2); }
+        .airplane-icon { fill: #fc5c7d; stroke: #fff; stroke-width: 2px; }
+        .airplane-trail { stroke-dasharray: 5, 5; }
+        #sim-log-panel { height: 200px; background-color: #0c1421; border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; padding: 1rem; font-family: 'Source Code Pro', monospace; font-size: 0.85rem; overflow-y: scroll; color: #a0b0c0; margin-top: 1.5rem; }
+        #sim-log-panel p { margin: 0; padding: 0; line-height: 1.5; }
+        code { color: #87cefa; background-color: rgba(135, 206, 250, 0.1); padding: 0.2em 0.4em; border-radius: 3px; }
+        .formula { background-color: rgba(0,0,0,0.3); padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; font-family: 'Source Code Pro', monospace; }
+    </style>
 </head>
 <body>
+    <div class="container py-4">
+        <div class="text-center mb-4 text-white">
+            <h1 class="display-5">✈️ 실시간 항공 네트워크 시뮬레이터</h1>
+            <p class="lead">A* 알고리즘과 대권 항법을 이용한 항공 네트워크 시뮬레이션</p>
+        </div>
 
-  <div class="main-content">
-    <h1>Flight Route Optimizer</h1>
-    <div class="search-box">
-      <label for="origin">출발지 선택</label>
-      <select id="origin"></select>
+        <!-- 모드 전환 -->
+        <ul class="nav nav-pills justify-content-center mb-3">
+            <li class="nav-item"><a href="#" class="nav-link active" id="mode-sim">실시간 시뮬레이션</a></li>
+            <li class="nav-item"><a href="#" class="nav-link" id="mode-search">A* 경로 탐색</a></li>
+        </ul>
 
-      <label for="destination">목적지 선택</label>
-      <select id="destination"></select>
+        <!-- 경로 탐색 UI (기본적으로 숨김) -->
+        <div id="search-panel" class="card shadow-lg" style="display: none;">
+            <div class="card-body p-4">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md"><label for="origin" class="form-label"><strong>출발지</strong></label><select id="origin" class="form-select"></select></div>
+                    <div class="col-md"><label for="destination" class="form-label"><strong>도착지</strong></label><select id="destination" class="form-select"></select></div>
+                    <div class="col-md-auto d-flex align-items-end"><button id="calculate" class="btn btn-primary w-100 py-2">경로 계산</button></div>
+                </div>
+            </div>
+        </div>
 
-      <button id="calculateButton" onclick="calculateRoute()">경로 계산</button>
-      <div class="loading" id="loadingMessage">경로 계산 중...</div>
+        <!-- 시뮬레이션 제어 UI -->
+        <div id="sim-controls" class="card shadow-lg">
+            <div class="card-body p-3">
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-4"><button id="toggle-sim" class="btn btn-success w-100">시뮬레이션 시작</button></div>
+                    <div class="col-md-8">
+                        <label for="airplane-count" class="form-label mb-0">항공기 수: <span id="airplane-count-label">10</span></label>
+                        <input type="range" class="form-range" min="1" max="50" value="10" id="airplane-count">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="result" class="mt-4"></div>
+        <div id="map"></div>
+        <div id="sim-log-panel"></div>
+
+        <div class="accordion mt-4" id="explanationAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne"><strong>핵심 원리 및 계산 과정 분석</strong></button></h2>
+                <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#explanationAccordion">
+                    <div class="accordion-body">
+                        
+                        <ul class="nav nav-tabs mb-3" id="theoryTab" role="tablist">
+                            <li class="nav-item" role="presentation"><button class="nav-link active" id="sim-tab" data-bs-toggle="tab" data-bs-target="#sim-content" type="button">시뮬레이션</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="astar-tab" data-bs-toggle="tab" data-bs-target="#astar-content" type="button">A* 경로탐색</button></li>
+                            <li class="nav-item" role="presentation"><button class="nav-link" id="geo-tab" data-bs-toggle="tab" data-bs-target="#geo-content" type="button">지리 계산</button></li>
+                        </ul>
+
+                        <div class="tab-content" id="theoryTabContent">
+                            <div class="tab-pane fade show active" id="sim-content">
+                                <h5>실시간 시뮬레이션 원리</h5>
+                                <p>시뮬레이션 모드는 클라이언트 측(브라우저) JavaScript를 통해 모든 계산과 렌더링이 이루어집니다. 백엔드 서버는 초기 공항 데이터 제공 역할만 수행하여 서버 부하를 최소화합니다.</p>
+                                <ol>
+                                    <li><strong>항공기 객체 생성</strong>: 사용자가 설정한 수만큼 <code>Airplane</code> 객체를 생성합니다. 각 객체는 출발지, 목적지, 현재좌표, 경로, 비행진행률 등의 상태 정보를 독립적으로 가집니다.</li>
+                                    <li><strong>임의 경로 할당</strong>: 각 항공기는 생성되거나 목적지에 도착할 때마다, 전체 공항 목록에서 임의의 출발지와 목적지를 새로 할당받습니다. 이 두 지점 간의 대권 항로가 항공기의 비행 경로로 설정됩니다.</li>
+                                    <li><strong>애니메이션 루프</strong>: <code>requestAnimationFrame</code>을 사용하여 브라우저의 렌더링 주기에 맞춰 애니메이션 루프를 실행합니다. 이는 CPU 사용을 최적화하고 부드러운 시각적 효과를 보장합니다.</li>
+                                    <li><strong>상태 업데이트 및 렌더링</strong>: 각 프레임에서 모든 항공기 객체의 <code>update()</code> 메소드를 호출합니다. 이 메소드는 비행 진행률(progress)을 소량 증가시키고, 전체 경로에서 현재 진행률에 해당하는 좌표를 계산하여 지도 위 아이콘의 위치를 업데이트합니다. 또한, 이전 좌표와 현재 좌표를 바탕으로 비행 방향을 계산하여 아이콘의 각도를 회전시킵니다.</li>
+                                    <li><strong>경로 재설정</strong>: 비행 진행률이 100%에 도달하면(<code>progress >= 1</code>), 해당 항공기는 목적지에 도착한 것으로 간주됩니다. 잠시 후, 새로운 임의의 경로를 다시 할당받아 다른 곳에서 비행을 시작하며 이 과정이 무한히 반복됩니다.</li>
+                                </ol>
+                            </div>
+
+                            <div class="tab-pane fade" id="astar-content">
+                                <h5>A* (A-Star) 탐색 알고리즘</h5>
+                                <p>A* 알고리즘은 경로 탐색 문제에서 시작 노드부터 목표 노드까지의 최단 경로를 효율적으로 찾는 대표적인 정보 기반 탐색(Informed Search) 알고리즘입니다. 각 노드 `n`에 대해 다음 평가 함수 `f(n)`을 사용하여 탐색할 노드의 우선순위를 결정합니다.</p>
+                                <div class="formula text-center"><code>f(n) = g(n) + h(n)</code></div>
+                                <ul>
+                                    <li><code>g(n)</code>: 시작 노드로부터 현재 노드 `n`까지의 실제 누적 비용(거리).</li>
+                                    <li><code>h(n)</code>: 현재 노드 `n`에서 목표 노드까지의 예상 비용을 추정하는 휴리스틱 함수(Heuristic). 본 시스템에서는 두 지점 간의 직선 거리인 **대권 거리(Great-circle distance)**를 휴리스틱으로 사용합니다.</li>
+                                </ul>
+                                <p>A*의 핵심은 `h(n)`이 실제 목표까지의 비용보다 크지 않은 값(Admissible Heuristic)을 사용할 때, 최적의 경로를 보장한다는 점입니다. 대권 거리는 실제 비행 경로보다 절대 길 수 없으므로 이 조건을 만족합니다.</p>
+                                <h6>탐색 과정 (의사코드)</h6>
+                                <div class="formula">
+<pre><code>function A_Star(start, goal):
+  open_set = {start} // 탐색할 노드 집합 (우선순위 큐)
+  came_from = {} // 각 노드의 이전 노드를 기록
+
+  g_score = map with default value of Infinity
+  g_score[start] = 0
+
+  f_score = map with default value of Infinity
+  f_score[start] = heuristic(start, goal)
+
+  while open_set is not empty:
+    current = node in open_set with the lowest f_score
+    if current == goal:
+      return reconstruct_path(came_from, current)
+
+    remove current from open_set
+    for each neighbor of current:
+      tentative_g_score = g_score[current] + dist(current, neighbor)
+      if tentative_g_score < g_score[neighbor]:
+        came_from[neighbor] = current
+        g_score[neighbor] = tentative_g_score
+        f_score[neighbor] = g_score[neighbor] + heuristic(neighbor, goal)
+        if neighbor not in open_set:
+          add neighbor to open_set
+
+  return failure // 경로 없음</code></pre></div>
+                            </div>
+
+                            <div class="tab-pane fade" id="geo-content">
+                                <h5>1. 대권 거리 (Haversine Formula)</h5>
+                                <p>지구와 같은 구체 위 두 점 사이의 최단 거리를 계산하기 위해 하버사인 공식을 사용합니다. 위도(latitude)와 경도(longitude)를 이용해 거리를 계산합니다.</p>
+                                <div class="formula">
+                                    <p><code>a = sin²(Δφ/2) + cos(φ₁) ⋅ cos(φ₂) ⋅ sin²(Δλ/2)</code></p>
+                                    <p><code>c = 2 ⋅ atan2(√a, √(1−a))</code></p>
+                                    <p><code>d = R ⋅ c</code></p>
+                                    <small>여기서, φ는 위도, λ는 경도, R은 지구의 반지름(6371km), Δφ와 Δλ는 두 지점의 위도와 경도 차이입니다.</small>
+                                </div>
+
+                                <h5>2. 대권 항로 보간법 (Spherical Linear Interpolation)</h5>
+                                <p>두 지점 사이의 대권 항로를 지도에 부드러운 곡선으로 그리기 위해, 두 점을 구면 위에서 보간해야 합니다. 이는 3차원 공간에서 두 벡터 사이를 보간하는 SLERP(Spherical Linear Interpolation)와 유사한 원리를 따릅니다.</p>
+                                <ol>
+                                    <li>위도/경도 좌표를 3D 데카르트 좌표(x, y, z)로 변환합니다.</li>
+                                    <li>두 3D 벡터 사이의 각도(<code>d</code>)를 구합니다.</li>
+                                    <li>0과 1 사이의 보간 계수(<code>f</code>)에 따라, 두 벡터 사이의 중간 벡터를 계산합니다.</li>
+                                    <div class="formula">
+                                        <p><code>P(f) = (sin((1-f)d) / sin(d)) ⋅ P₁ + (sin(fd) / sin(d)) ⋅ P₂</code></p>
+                                        <small>P₁과 P₂는 시작점과 끝점의 3D 벡터입니다.</small>
+                                    </div>
+                                    <li>계산된 중간 벡터를 다시 위도/경도 좌표로 변환하여 지도에 표시할 점들의 시퀀스를 생성합니다.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="result" id="result"></div>
-  </div>
+    <svg width="0" height="0" style="position:absolute;"><defs><symbol id="airplane-symbol" viewBox="0 0 48 48"><path d="M44.9,29.2c-0.5-0.4-1.2-0.3-1.6,0.2L29,40.8V29.4l9.8-12.8c0.4-0.5,0.3-1.2-0.2-1.6L37,14.1c-0.5-0.4-1.2-0.3-1.6,0.2L24,25.5L12.6,14.3c-0.4-0.5-1.1-0.6-1.6-0.2L9.4,15c-0.5,0.4-0.6,1.1-0.2,1.6l9.8,12.8V40.8L4.7,30.4c-0.4-0.5-1.1-0.6-1.6-0.2L1.5,31c-0.5,0.4-0.6,1.1-0.2,1.6l19.8,20.7c0.4,0.4,1,0.7,1.6,0.7c0.6,0,1.2-0.2,1.6-0.7l19.8-20.7c0.4-0.5,0.3-1.2-0.2-1.6L44.9,29.2z"/></symbol></defs></svg>
 
-  <script>
-    let airports = [];
-    let searchData = {
-      origin: '',
-      destination: ''
-    };
-
-    // 공항 데이터를 불러와서 출발지, 목적지 선택 옵션을 채웁니다.
-    async function loadAirports() {
-      try {
-        const response = await axios.get('http://127.0.0.1:5000/airports');
-        airports = response.data;
-
-        populateAirportOptions();
-      } catch (error) {
-        console.error("공항 데이터를 불러오는 데 실패했습니다", error);
-      }
-    }
-
-    function populateAirportOptions() {
-      const originSelect = document.getElementById('origin');
-      const destinationSelect = document.getElementById('destination');
-
-      airports.forEach(airport => {
-        const optionOrigin = document.createElement('option');
-        optionOrigin.value = airport.iata_code;
-        optionOrigin.textContent = `${airport.airport_name} (${airport.city_iata_code}, ${airport.country_name})`;
-        originSelect.appendChild(optionOrigin);
-
-        const optionDest = document.createElement('option');
-        optionDest.value = airport.iata_code;
-        optionDest.textContent = `${airport.airport_name} (${airport.city_iata_code}, ${airport.country_name})`;
-        destinationSelect.appendChild(optionDest);
-      });
-    }
-
-    async function calculateRoute() {
-      const origin = document.getElementById('origin').value;
-      const destination = document.getElementById('destination').value;
-
-      if (!origin || !destination) {
-        alert('출발지와 목적지를 선택해주세요!');
-        return;
-      }
-
-      document.getElementById('loadingMessage').style.display = 'block';
-
-      try {
-        const response = await axios.post('http://127.0.0.1:5000/calculate_route', {
-          origin: origin,
-          destination: destination
-        });
-
-        const { distance } = response.data;
-        document.getElementById('result').innerHTML = `출발지: ${origin}, 목적지: ${destination}<br>최단 거리: ${distance.toFixed(2)} km`;
-      } catch (error) {
-        console.error("경로 계산에 실패했습니다", error);
-      } finally {
-        document.getElementById('loadingMessage').style.display = 'none';
-      }
-    }
-
-    // 페이지가 로드되면 공항 데이터를 불러옵니다.
-    window.onload = loadAirports;
-  </script>
-
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/main.js"></script>
 </body>
 </html>
