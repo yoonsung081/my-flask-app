@@ -14,6 +14,7 @@ let airplanes = [];
 let simLoopId;
 const MAX_AIRPLANES = 50;
 let logCounter = 0;
+let simulationSpeedMultiplier = 1; // 시뮬레이션 속도 배율
 
 // --- 초기화 --- //
 document.addEventListener('DOMContentLoaded', () => {
@@ -41,6 +42,11 @@ function initUI() {
         const count = e.target.value;
         document.getElementById('airplane-count-label').textContent = count;
         adjustAirplaneCount(parseInt(count, 10));
+    });
+    document.getElementById('sim-speed').addEventListener('input', e => {
+        const speed = parseFloat(e.target.value);
+        document.getElementById('sim-speed-label').textContent = `${speed.toFixed(1)}x`;
+        simulationSpeedMultiplier = speed;
     });
     log('[System] UI 초기화 완료.');
 }
@@ -186,7 +192,7 @@ class Airplane {
     }
 
     update() {
-        this.progress += this.speed;
+        this.progress += this.speed * simulationSpeedMultiplier;
         if (this.progress >= 1) {
             log(`[Airplane #${this.id}] 목적지 ${this.destination.iata_code} 도착. `);
             this.reset();
