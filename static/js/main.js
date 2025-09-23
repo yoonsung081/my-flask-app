@@ -58,7 +58,7 @@ async function loadAirports() {
         if (!response.ok) throw new Error(`HTTP 오류!`);
         const data = await response.json();
         
-        airportList = data.filter(a => a.iata_code && a.airport_name && a.country_name);
+        airportList = data.filter(a => a.iata_code && a.airport_name && a.country_name && a.latitude != null && a.longitude != null);
         airportList.sort((a, b) => a.airport_name.localeCompare(b.airport_name));
 
         const originSelect = document.getElementById('origin');
@@ -175,7 +175,7 @@ class Airplane {
             [this.destination.latitude, this.destination.longitude]
         );
         this.progress = 0;
-        this.speed = 0.001 + Math.random() * 0.004; // 속도 약간 줄임
+        this.speed = (0.001 + Math.random() * 0.004) / 5; // 속도 대폭 줄임
 
         this.createMarker();
         this.trail = L.polyline([], { color: '#ff00ff', weight: 1, opacity: 0.3, className: 'airplane-trail' }).addTo(simulationLayer);
