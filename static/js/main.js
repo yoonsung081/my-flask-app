@@ -174,7 +174,8 @@ class Airplane {
             [this.origin.latitude, this.origin.longitude],
             [this.destination.latitude, this.destination.longitude]
         );
-        this.progress = 0;
+        this.routeProgress = 0;
+        this.planeProgress = 0;
         this.speed = (0.001 + Math.random() * 0.004) / 5; // 속도 대폭 줄임
 
         this.createMarker();
@@ -192,21 +193,32 @@ class Airplane {
     }
 
     update() {
-        this.progress += this.speed * simulationSpeedMultiplier;
-        if (this.progress >= 1) {
+        // 경로와 비행기 속도를 분리
+        const speedIncrement = this.speed * simulationSpeedMultiplier;
+        this.routeProgress = Math.min(1, this.routeProgress + speedIncrement); // 경로(꼬리)는 정상적으로 진행
+        this.planeProgress = Math.min(1, this.planeProgress + speedIncrement * 0.95); // 비행기(아이콘)는 약간 느리게
+
+        if (this.routeProgress >= 1) {
             log(`[Airplane #${this.id}] 목적지 ${this.destination.iata_code} 도착. `);
             this.reset();
             return;
         }
 
-        const pathIndex = Math.floor(this.progress * (this.path.length - 1));
-        const nextIndex = pathIndex + 1 < this.path.length ? pathIndex + 1 : pathIndex;
-        
-        const currentPos = this.path[pathIndex];
-        const nextPos = this.path[nextIndex];
+        // 경로 꼬리 업데이트
+        const routePathIndex = Math.floor(this.routeProgress * (this.path.length - 1));
+        const trailPos = this.path[routePathIndex];
+        if(trailPos) this.trail.addLatLng(trailPos);
+
+        // 비행기 아이콘 위치 및 각도 업데이트
+        const planePathIndex = Math.floor(this.planeProgress * (this.path.length - 1));
+        const nextPlaneIndex = Math.min(this.path.length - 1, planePathIndex + 1);
+
+        const currentPos = this.path[planePathIndex];
+        const nextPos = this.path[nextPlaneIndex];
+
+        if (!currentPos || !nextPos) return; // 경로 데이터가 없으면 중단
 
         this.marker.setLatLng(currentPos);
-        this.trail.addLatLng(currentPos);
 
         const angle = Math.atan2(nextPos[0] - currentPos[0], nextPos[1] - currentPos[1]) * 180 / Math.PI;
         if (this.marker._icon) {
@@ -218,7 +230,7 @@ class Airplane {
     logStatus() {
         if (!this.marker) return;
         const pos = this.marker.getLatLng();
-        log(`[Airplane #${this.id}] Status: ${(this.progress * 100).toFixed(1)}% | Pos: ${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`);
+        log(`[Airplane #${this.id}] Status: ${(this.planeProgress * 100).toFixed(1)}% | Pos: ${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`);
     }
 
     remove() {
