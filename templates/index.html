@@ -44,8 +44,15 @@
         </div>
 
         <div id="sim-controls" style="display: none;">
-            <p class="text-center">실시간 시뮬레이션이 실행 중입니다.</p>
-            <button id="toggle-sim" class="btn btn-success w-100">시뮬레이션 시작/정지</button>
+            <div class="mb-3">
+                <label for="airplane-count" class="form-label">비행기 수: <span id="airplane-count-label">15</span></label>
+                <input type="range" class="form-range" min="1" max="100" value="15" id="airplane-count">
+            </div>
+            <div class="mb-3">
+                <label for="sim-speed" class="form-label">시뮬레이션 속도: <span id="sim-speed-label">1.0</span>x</label>
+                <input type="range" class="form-range" min="0.1" max="5" value="1" step="0.1" id="sim-speed">
+            </div>
+            <button id="toggle-sim" class="btn btn-success w-100">시뮬레이션 시작</button>
         </div>
 
         <div id="results-panel"></div>
