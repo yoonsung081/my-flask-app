@@ -114,8 +114,15 @@ function handleCalculateClick() {
 }
 
 function handleExampleClick() {
-    const originIata = 'JFK';
-    const destinationIata = 'SFO';
+    const airportIatas = Object.keys(airportsData);
+    if (airportIatas.length < 2) return;
+
+    let originIata, destinationIata;
+    do {
+        originIata = airportIatas[Math.floor(Math.random() * airportIatas.length)];
+        destinationIata = airportIatas[Math.floor(Math.random() * airportIatas.length)];
+    } while (originIata === destinationIata);
+
     document.getElementById('origin').value = originIata;
     document.getElementById('destination').value = destinationIata;
     calculateAndVisualize(originIata, destinationIata);
@@ -192,7 +199,7 @@ class Airplane {
         const endVec = latLonToVector3(destination.latitude, destination.longitude, 5);
         const mid = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
         const distance = startVec.distanceTo(endVec);
-        mid.setLength(5 + distance * 0.1); // 경로 높이 조절 (조정됨)
+        mid.setLength(5 + distance * 0.2); // 경로 높이 조절 (수정됨)
         this.curve = new THREE.QuadraticBezierCurve3(startVec, mid, endVec);
     }
 
@@ -229,7 +236,7 @@ function visualizeArc(path, color, name) {
         const end = points[i+1];
         const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
             const distance = start.distanceTo(end);
-            mid.setLength(5 + distance * 0.1); // 경로 높이 조절 (조정됨)
+            mid.setLength(5 + distance * 0.2); // 경로 높이 조절 (수정됨)
             const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
         curvePoints.push(...curve.getPoints(50));
     }

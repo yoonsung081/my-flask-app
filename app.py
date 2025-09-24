@@ -51,7 +51,7 @@ def load_airports_and_build_graph():
         return
 
     # 2. 가상 항공 네트워크(그래프) 구축
-    max_dist = 1500  # 직항으로 간주할 최대 거리 (km)
+    max_dist = 1000  # 직항으로 간주할 최대 거리 (km)
     for i, airport1 in enumerate(temp_airports_list):
         iata1 = airport1['iata_code']
         if iata1 not in airport_graph:
