@@ -22,6 +22,7 @@ const earth = new THREE.Mesh(earthGeometry, earthMaterial);
 scene.add(earth);
 
 // --- 전역 변수 ---
+let allAirports = [];
 let airportsData = {};
 let currentMode = 'search';
 let simulationRunning = false;
@@ -45,23 +46,69 @@ function init() {
     fetch('/airports')
         .then(response => response.json())
         .then(data => {
-            const originSelect = document.getElementById('origin');
-            const destinationSelect = document.getElementById('destination');
-            data.forEach(airport => {
+            allAirports = data;
+            allAirports.forEach(airport => {
                 if (airport.iata_code) {
                     airportsData[airport.iata_code] = airport;
-                    const option = new Option(`${airport.airport_name} (${airport.iata_code})`, airport.iata_code);
-                    originSelect.add(option.cloneNode(true));
-                    destinationSelect.add(option);
                 }
             });
+            populateFilters();
+            updateAirportSelects();
         });
     setupEventListeners();
     animate();
 }
 
+// --- 필터 및 선택 메뉴 채우기 ---
+function populateFilters() {
+    const continents = ['All', ...new Set(allAirports.map(a => a.continent))].sort();
+    const continentSelect = document.getElementById('continent-filter');
+    continents.forEach(c => continentSelect.add(new Option(c, c)));
+
+    updateCountryFilter();
+}
+
+function updateCountryFilter() {
+    const continent = document.getElementById('continent-filter').value;
+    const countrySelect = document.getElementById('country-filter');
+    countrySelect.innerHTML = ''; // Clear previous options
+
+    const filteredAirports = (continent === 'All') ? allAirports : allAirports.filter(a => a.continent === continent);
+    const countries = ['All', ...new Set(filteredAirports.map(a => a.iso_country))].sort();
+    countries.forEach(c => countrySelect.add(new Option(c, c)));
+
+    updateAirportSelects();
+}
+
+function updateAirportSelects() {
+    const continent = document.getElementById('continent-filter').value;
+    const country = document.getElementById('country-filter').value;
+
+    let filtered = allAirports;
+    if (continent !== 'All') {
+        filtered = filtered.filter(a => a.continent === continent);
+    }
+    if (country !== 'All') {
+        filtered = filtered.filter(a => a.iso_country === country);
+    }
+
+    const originSelect = document.getElementById('origin');
+    const destinationSelect = document.getElementById('destination');
+    originSelect.innerHTML = '';
+    destinationSelect.innerHTML = '';
+
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
+    filtered.forEach(airport => {
+        const option = new Option(`${airport.name} (${airport.iata_code})`, airport.iata_code);
+        originSelect.add(option.cloneNode(true));
+        destinationSelect.add(option);
+    });
+}
+
 // --- 이벤트 리스너 설정 ---
 function setupEventListeners() {
+    document.getElementById('continent-filter').addEventListener('change', updateCountryFilter);
+    document.getElementById('country-filter').addEventListener('change', updateAirportSelects);
     document.getElementById('mode-search').addEventListener('click', () => switchMode('search'));
     document.getElementById('mode-sim').addEventListener('click', () => switchMode('sim'));
     document.getElementById('calculate').addEventListener('click', handleCalculateClick);
@@ -125,6 +172,15 @@ function handleExampleClick() {
 
     document.getElementById('origin').value = originIata;
     document.getElementById('destination').value = destinationIata;
+    // Since the selects might be filtered, we need to reset them to show the example
+    document.getElementById('continent-filter').value = 'All';
+    updateCountryFilter();
+    document.getElementById('country-filter').value = 'All';
+    updateAirportSelects();
+    // Set the values again after populating
+    document.getElementById('origin').value = originIata;
+    document.getElementById('destination').value = destinationIata;
+
     calculateAndVisualize(originIata, destinationIata);
 }
 
@@ -139,15 +195,10 @@ function calculateAndVisualize(originIata, destinationIata) {
     .then(data => {
         clearScene();
         if (data.path) {
-            // A* 경로 시각화
             visualizeArc(data.path, 0x28a745, 'astar');
-
-            // 비교를 위한 직선 경로 시각화
             const directPath = [originIata, destinationIata];
             visualizeArc(directPath, 0xffc107, 'direct');
-            
-            // 서버에서 받은 데이터로 결과 표시
-            displayResults(data.astar_distance, data.direct_distance);
+            displayResults(data.astar_distance, data.direct_distance, data.path);
         }
     });
 }
@@ -186,39 +237,33 @@ function restartSimulation() {
 
 class Airplane {
     constructor(origin, destination) {
-        this.speed = (Math.random() * 0.4 + 0.2) * 0.002; // Adjusted speed
-        
-        const geometry = new THREE.ConeGeometry(0.03, 0.15, 8); // Slightly smaller
+        this.speed = (Math.random() * 0.4 + 0.2) * 0.002;
+        const geometry = new THREE.ConeGeometry(0.03, 0.15, 8);
         geometry.rotateX(Math.PI / 2);
         const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
         this.mesh = new THREE.Mesh(geometry, material);
         scene.add(this.mesh);
-
-        this.pathLine = null; // Initialize pathLine property
+        this.pathLine = null;
         this.setupPath(origin, destination);
-        this.progress = Math.random(); // Start at a random point in the path
+        this.progress = Math.random();
     }
 
     setupPath(origin, destination) {
-        // If a line for the old path exists, remove it
         if (this.pathLine) {
             scene.remove(this.pathLine);
             this.pathLine.geometry.dispose();
             this.pathLine.material.dispose();
         }
-
         this.origin = origin;
         this.destination = destination;
         const startVec = latLonToVector3(origin.latitude, origin.longitude, 5);
         const endVec = latLonToVector3(destination.latitude, destination.longitude, 5);
         const arcPoints = createGreatCircleArc(startVec, endVec);
-
         if (arcPoints.length < 2) {
             this.curve = null;
             this.pathLine = null;
             return;
         }
-
         this.curve = new THREE.CatmullRomCurve3(arcPoints);
         const tubeGeometry = new THREE.TubeGeometry(this.curve, 64, 0.01, 8, false);
         const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
@@ -234,14 +279,12 @@ class Airplane {
         }
         this.progress += this.speed * simulationSpeed;
         if (this.progress >= 1) {
-            this.progress = 0; // Loop back
-            this.reset(); // Or get a new path
+            this.progress = 0;
+            this.reset();
             return;
         }
         const newPosition = this.curve.getPointAt(this.progress);
         this.mesh.position.copy(newPosition);
-        
-        // Make the plane point forward along the curve
         const nextPoint = this.curve.getPointAt(Math.min(this.progress + 0.001, 1));
         this.mesh.lookAt(nextPoint);
     }
@@ -250,12 +293,10 @@ class Airplane {
         this.progress = 0;
         const airportIatas = Object.keys(airportsData);
         let newOrigin, newDestination;
-        
         do {
             newOrigin = airportsData[airportIatas[Math.floor(Math.random() * airportIatas.length)]];
             newDestination = airportsData[airportIatas[Math.floor(Math.random() * airportIatas.length)]];
         } while (!newOrigin || !newDestination || newOrigin.iata_code === newDestination.iata_code);
-
         this.setupPath(newOrigin, newDestination);
     }
 }
@@ -266,31 +307,21 @@ function createGreatCircleArc(startVec, endVec) {
     const points = [];
     const startUnit = startVec.clone().normalize();
     const endUnit = endVec.clone().normalize();
-
     let axis = new THREE.Vector3().crossVectors(startUnit, endUnit).normalize();
-    
-    // Handle cases where vectors are collinear
     if (isNaN(axis.x) || isNaN(axis.y) || isNaN(axis.z)) {
-        if (startUnit.distanceTo(endUnit) < 0.001) { // Same point
-            return [startVec];
-        }
-        // Opposite points
+        if (startUnit.distanceTo(endUnit) < 0.001) { return [startVec]; }
         const nonCollinearVec = (Math.abs(startUnit.x) < 0.9) ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
         axis = new THREE.Vector3().crossVectors(startUnit, nonCollinearVec).normalize();
     }
-
     const angle = startUnit.angleTo(endUnit);
     const distance = startVec.distanceTo(endVec);
-    const maxHeight = Math.max(0.05, distance * 0.2); // Control the height of the arc, with a minimum height
-
+    const maxHeight = Math.max(0.05, distance * 0.2);
     for (let i = 0; i <= numPoints; i++) {
         const t = i / numPoints;
         const rotation = new THREE.Quaternion().setFromAxisAngle(axis, angle * t);
         const point = startVec.clone().applyQuaternion(rotation);
-        
-        // Add height that peaks in the middle of the arc
         const height = maxHeight * Math.sin(t * Math.PI);
-        point.setLength(5 + height); // 5 is the radius of the globe
+        point.setLength(5 + height);
         points.push(point);
     }
     return points;
@@ -303,49 +334,44 @@ function visualizeArc(path, color, name) {
         const start = points[i];
         const end = points[i+1];
         const arcPoints = createGreatCircleArc(start, end);
-        // Avoid duplicating points at the junctions of segments
         curvePoints.push(...(i > 0 ? arcPoints.slice(1) : arcPoints));
     }
-
-    if (curvePoints.length < 2) {
-        console.warn("Not enough points to create a curve for path:", path);
-        return;
-    }
-
+    if (curvePoints.length < 2) { return; }
     const pathCurve = new THREE.CatmullRomCurve3(curvePoints);
-    const tubeRadius = (name === 'astar') ? 0.03 : 0.02; // A* 경로를 더 두껍게
-    const geometry = new THREE.TubeGeometry(pathCurve, 256, tubeRadius, 8, false); // Increased segments for smoothness
+    const tubeRadius = (name === 'astar') ? 0.03 : 0.02;
+    const geometry = new THREE.TubeGeometry(pathCurve, 256, tubeRadius, 8, false);
     const material = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.8 });
     const arc = new THREE.Mesh(geometry, material);
     arc.name = name;
     scene.add(arc);
 }
 
-function displayResults(astarDistance, directDistance) {
+function displayResults(astarDistance, directDistance, path) {
     const resultsPanel = document.getElementById('results-panel');
     const directKm = Math.round(directDistance);
+    let pathString = path.join(' → ');
 
     if (astarDistance !== null) {
         const astarKm = Math.round(astarDistance);
         const difference = Math.round(directKm - astarKm);
 
+        let content = `
+            <div class="path-result astar-path"><strong>A* 효율 비용:</strong> ${astarKm} units</div>
+            <div class="path-result direct-path"><strong>직선 거리 비용:</strong> ${directKm} units</div>
+            <p class="text-center mt-2"><strong>경로:</strong> ${pathString}</p>
+        `;
+
         if (difference > 0) {
-            resultsPanel.innerHTML = `
-                <div class="path-result astar-path"><strong>A* 효율 비용:</strong> ${astarKm} units</div>
-                <div class="path-result direct-path"><strong>직선 거리 비용:</strong> ${directKm} units</div>
-                <p class="text-center mt-3">A* 알고리즘이 <strong>${difference} units</strong> 만큼 더 효율적인 경로를 찾았습니다.</p>
-                <small class="d-block text-center text-muted mt-2">(효율 비용은 연료, 항로 이용료 등을 종합한 가상 단위입니다)</small>
-            `;
+            content += `<p class="text-center mt-3">A* 알고리즘이 <strong>${difference} units</strong> 만큼 더 효율적인 경로를 찾았습니다.</p>
+                      <small class="d-block text-center text-muted mt-2">(효율 비용은 연료, 항로 이용료 등을 종합한 가상 단위입니다)</small>`;
         } else {
-             resultsPanel.innerHTML = `
-                <div class="path-result astar-path"><strong>A* 경로 비용:</strong> ${astarKm} units</div>
-                <div class="path-result direct-path"><strong>직선 거리 비용:</strong> ${directKm} units</div>
-                <p class="text-center mt-3">이 구간은 직선 항로가 더 효율적입니다.</p>
-            `;
+            content += `<p class="text-center mt-3">이 구간은 직선 항로가 더 효율적입니다.</p>`;
         }
+        resultsPanel.innerHTML = content;
     } else {
         resultsPanel.innerHTML = `
             <div class="path-result direct-path"><strong>직선 거리:</strong> ${directKm} km</div>
+            <p class="text-center mt-2"><strong>경로:</strong> ${pathString}</p>
             <p class="text-center mt-3">탐색 가능한 A* 경로가 없습니다.</p>
         `;
     }
@@ -376,15 +402,12 @@ function haversineDistance(airport1, airport2) {
 function clearScene() {
     for (let i = scene.children.length - 1; i >= 0; i--) {
         const obj = scene.children[i];
-        // 경로 탐색(astar, direct) 또는 시뮬레이션(sim_path)으로 생성된 모든 경로 라인을 제거
         if (obj.type === 'Mesh' && (obj.name === 'astar' || obj.name === 'direct' || obj.name === 'sim_path')) {
             scene.remove(obj);
             obj.geometry.dispose();
             obj.material.dispose();
         }
     }
-
-    // 모든 비행기 메시를 제거하고 리소스를 해제
     airplanes.forEach(plane => {
         if (plane.mesh) {
             scene.remove(plane.mesh);

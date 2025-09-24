@@ -27,32 +27,64 @@ def calculate_haversine_distance(lat1, lon1, lat2, lon2):
 
 def load_airports_and_build_graph():
     global airports_data, airport_graph
-    print("서버 초기화: 공항 데이터 로드 및 그래프 생성 시작...")
+    print("서버 초기화: 신규 데이터 로드 및 그래프 생성 시작...")
 
-    # 1. 공항 데이터 로드
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    AIRPORTS_FILE_PATH = os.path.join(BASE_DIR, 'airports.csv')
-    temp_airports_list = []
+    
+    # --- 데이터 파일 경로 ---
+    AIRPORTS_FILE = os.path.join(BASE_DIR, 'airports_all.csv')
+    RUNWAYS_FILE = os.path.join(BASE_DIR, 'runways.csv')
+
+    # 1. 활주로 데이터 로드 (활주로가 있는 공항 ID를 확인하기 위함)
+    runway_airport_ids = set()
     try:
-        with open(AIRPORTS_FILE_PATH, mode='r', encoding='utf-8') as file:
+        with open(RUNWAYS_FILE, mode='r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             for row in reader:
-                # 데이터 유효성 검사 및 형 변환
-                if all(k in row for k in ['iata_code', 'latitude', 'longitude']) and row['iata_code']:
+                if row.get('airport_ref'):
+                    runway_airport_ids.add(row['airport_ref'])
+    except FileNotFoundError:
+        print(f"경고: '{RUNWAYS_FILE}' 파일을 찾을 수 없습니다. 활주로 데이터를 무시합니다.")
+
+    # 2. 공항 데이터 로드 및 필터링
+    temp_airports_list = []
+    try:
+        with open(AIRPORTS_FILE, mode='r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                # 데이터 유효성 검사 및 필터링 조건
+                is_valid_type = row.get('type') in ['medium_airport', 'large_airport']
+                has_scheduled_service = row.get('scheduled_service') == 'yes'
+                has_iata_code = row.get('iata_code')
+                has_runway = row.get('id') in runway_airport_ids
+
+                if is_valid_type and has_scheduled_service and has_iata_code and has_runway:
                     try:
-                        row['latitude'] = float(row['latitude'])
-                        row['longitude'] = float(row['longitude'])
-                        airports_data[row['iata_code']] = row
-                        temp_airports_list.append(row)
+                        # 좌표 형 변환 및 데이터 저장
+                        row['latitude'] = float(row['latitude_deg'])
+                        row['longitude'] = float(row['longitude_deg'])
+                        # 필요한 키만 선택하여 저장 (메모리 효율화)
+                        filtered_row = {
+                            'id': row['id'],
+                            'iata_code': row['iata_code'],
+                            'name': row['name'],
+                            'type': row['type'],
+                            'latitude': row['latitude'],
+                            'longitude': row['longitude'],
+                            'iso_country': row['iso_country'],
+                            'continent': row['continent']
+                        }
+                        airports_data[row['iata_code']] = filtered_row
+                        temp_airports_list.append(filtered_row)
                     except (ValueError, TypeError):
                         continue # 좌표값이 숫자가 아니면 무시
     except FileNotFoundError:
-        print(f"치명적 오류: '{AIRPORTS_FILE_PATH}' 파일을 찾을 수 없습니다.")
+        print(f"치명적 오류: '{AIRPORTS_FILE}' 파일을 찾을 수 없습니다.")
         return
 
-    # 2. 가상 항공 네트워크(그래프) 구축
-    max_dist = 2500  # 직항으로 간주할 최대 거리 (km) - 범위를 늘려 더 많은 경로 탐색
-    efficiency_factor = 0.7  # 효율성 가중치 (예: 기존 항로는 30% 비용 절감)
+    # 3. 가상 항공 네트워크(그래프) 구축
+    max_dist = 3000  # 직항 최대 거리 (km)
+    efficiency_factor = 0.7  # 효율성 가중치
 
     for i, airport1 in enumerate(temp_airports_list):
         iata1 = airport1['iata_code']
@@ -67,10 +99,11 @@ def load_airports_and_build_graph():
             if dist <= max_dist:
                 if iata2 not in airport_graph:
                     airport_graph[iata2] = []
-                # 그래프에는 실제 거리가 아닌 '효율성이 적용된 비용'을 저장
                 efficient_dist = dist * efficiency_factor
                 airport_graph[iata1].append((iata2, efficient_dist))
                 airport_graph[iata2].append((iata1, efficient_dist))
+    
+    print(f"초기화 완료: {len(airports_data)}개 공항, {sum(len(v) for v in airport_graph.values()) // 2}개 노선 생성")
     
     print(f"초기화 완료: {len(airports_data)}개 공항, {sum(len(v) for v in airport_graph.values()) // 2}개 노선 생성")
 
