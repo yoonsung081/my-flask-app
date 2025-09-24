@@ -10,25 +10,44 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Poppins:wght@600&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Noto Sans KR', sans-serif; }
-        #globe-container { width: 100vw; height: 100vh; }
-        .ui-panel { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; max-width: 400px; }
+        #globe-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; }
+        .ui-container { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.75); padding: 20px; border-radius: 10px; width: 450px; backdrop-filter: blur(10px); }
         .form-select, .btn { margin-top: 10px; }
+        #results-panel { margin-top: 20px; }
+        .path-result { padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+        .astar-path { background: rgba(40, 167, 69, 0.2); border-left: 5px solid #28a745; }
+        .direct-path { background: rgba(255, 193, 7, 0.2); border-left: 5px solid #ffc107; }
     </style>
 </head>
 <body>
     <div id="globe-container"></div>
 
-    <div class="ui-panel">
-        <h1 class="h4">✈️ 3D 항공 시뮬레이터</h1>
-        <div class="mb-3">
-            <label for="origin" class="form-label">출발지</label>
-            <select id="origin" class="form-select"></select>
+    <div class="ui-container">
+        <h1 class="h4 text-center mb-4">✈️ 3D 항공 시뮬레이터</h1>
+        
+        <ul class="nav nav-pills nav-fill mb-3">
+            <li class="nav-item"><a href="#" class="nav-link active" id="mode-search">A* 경로 탐색</a></li>
+            <li class="nav-item"><a href="#" class="nav-link" id="mode-sim">실시간 시뮬레이션</a></li>
+        </ul>
+
+        <div id="search-panel">
+            <div class="mb-3">
+                <label for="origin" class="form-label">출발지</label>
+                <select id="origin" class="form-select"></select>
+            </div>
+            <div class="mb-3">
+                <label for="destination" class="form-label">도착지</label>
+                <select id="destination" class="form-select"></select>
+            </div>
+            <button id="calculate" class="btn btn-primary w-100">경로 계산</button>
         </div>
-        <div class="mb-3">
-            <label for="destination" class="form-label">도착지</label>
-            <select id="destination" class="form-select"></select>
+
+        <div id="sim-controls" style="display: none;">
+            <p class="text-center">실시간 시뮬레이션이 실행 중입니다.</p>
+            <button id="toggle-sim" class="btn btn-success w-100">시뮬레이션 시작/정지</button>
         </div>
-        <button id="calculate" class="btn btn-primary">경로 계산</button>
+
+        <div id="results-panel"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
