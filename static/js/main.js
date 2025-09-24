@@ -61,11 +61,16 @@ function init() {
 
 // --- 필터 및 선택 메뉴 채우기 ---
 function populateFilters() {
-    const continents = ['All', ...new Set(allAirports.map(a => a.continent))].sort();
     const continentSelect = document.getElementById('continent-filter');
+    const countrySelect = document.getElementById('country-filter');
+    const originSelect = document.getElementById('origin');
+    const destinationSelect = document.getElementById('destination');
+
+    // 대륙 필터 채우기
+    const continents = ['All', ...new Set(allAirports.map(a => a.continent))].sort();
     continents.forEach(c => continentSelect.add(new Option(c, c)));
 
-    updateCountryFilter();
+    updateCountryFilter(); // 국가 필터 초기화
 }
 
 function updateCountryFilter() {
@@ -73,23 +78,26 @@ function updateCountryFilter() {
     const countrySelect = document.getElementById('country-filter');
     countrySelect.innerHTML = ''; // Clear previous options
 
-    const filteredAirports = (continent === 'All') ? allAirports : allAirports.filter(a => a.continent === continent);
-    const countries = ['All', ...new Set(filteredAirports.map(a => a.iso_country))].sort();
+    const filteredAirportsByContinent = (continent === 'All') ? allAirports : allAirports.filter(a => a.continent === continent);
+    const countries = ['All', ...new Set(filteredAirportsByContinent.map(a => a.iso_country))].sort();
     countries.forEach(c => countrySelect.add(new Option(c, c)));
 
-    updateAirportSelects();
+    updateAirportSelects(); // 공항 선택 메뉴 초기화
 }
 
 function updateAirportSelects() {
-    const continent = document.getElementById('continent-filter').value;
-    const country = document.getElementById('country-filter').value;
+    const continentFilter = document.getElementById('continent-filter').value;
+    const countryFilter = document.getElementById('country-filter').value;
+    const originSearchText = document.getElementById('origin-search').value.toLowerCase();
+    const destinationSearchText = document.getElementById('destination-search').value.toLowerCase();
 
-    let filtered = allAirports;
-    if (continent !== 'All') {
-        filtered = filtered.filter(a => a.continent === continent);
+    let filteredAirports = allAirports;
+
+    if (continentFilter !== 'All') {
+        filteredAirports = filteredAirports.filter(a => a.continent === continentFilter);
     }
-    if (country !== 'All') {
-        filtered = filtered.filter(a => a.iso_country === country);
+    if (countryFilter !== 'All') {
+        filteredAirports = filteredAirports.filter(a => a.iso_country === countryFilter);
     }
 
     const originSelect = document.getElementById('origin');
@@ -97,18 +105,36 @@ function updateAirportSelects() {
     originSelect.innerHTML = '';
     destinationSelect.innerHTML = '';
 
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
-    filtered.forEach(airport => {
-        const option = new Option(`${airport.name} (${airport.iata_code})`, airport.iata_code);
-        originSelect.add(option.cloneNode(true));
-        destinationSelect.add(option);
-    });
+    const addOptions = (selectElement, searchText) => {
+        const currentFiltered = filteredAirports.filter(airport => 
+            airport.name.toLowerCase().includes(searchText) || 
+            airport.iata_code.toLowerCase().includes(searchText)
+        );
+        currentFiltered.sort((a, b) => a.name.localeCompare(b.name));
+        currentFiltered.forEach(airport => {
+            const option = new Option(`${airport.name} (${airport.iata_code})`, airport.iata_code);
+            selectElement.add(option);
+        });
+    };
+
+    addOptions(originSelect, originSearchText);
+    addOptions(destinationSelect, destinationSearchText);
 }
 
 // --- 이벤트 리스너 설정 ---
 function setupEventListeners() {
     document.getElementById('continent-filter').addEventListener('change', updateCountryFilter);
     document.getElementById('country-filter').addEventListener('change', updateAirportSelects);
+    
+    document.getElementById('continent-search').addEventListener('input', filterDropdownOptions.bind(null, 'continent-filter', allAirports.map(a => a.continent)));
+    document.getElementById('country-search').addEventListener('input', () => {
+        const continent = document.getElementById('continent-filter').value;
+        const filteredAirportsByContinent = (continent === 'All') ? allAirports : allAirports.filter(a => a.continent === continent);
+        filterDropdownOptions('country-filter', filteredAirportsByContinent.map(a => a.iso_country));
+    });
+    document.getElementById('origin-search').addEventListener('input', updateAirportSelects);
+    document.getElementById('destination-search').addEventListener('input', updateAirportSelects);
+
     document.getElementById('mode-search').addEventListener('click', () => switchMode('search'));
     document.getElementById('mode-sim').addEventListener('click', () => switchMode('sim'));
     document.getElementById('calculate').addEventListener('click', handleCalculateClick);
@@ -131,6 +157,25 @@ function setupEventListeners() {
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
+}
+
+function filterDropdownOptions(selectId, allPossibleOptions) {
+    const searchInput = document.getElementById(selectId.replace('-filter', '-search'));
+    const selectElement = document.getElementById(selectId);
+    const searchText = searchInput.value.toLowerCase();
+
+    selectElement.innerHTML = '';
+    const filteredOptions = ['All', ...new Set(allPossibleOptions)].sort().filter(option => 
+        option.toLowerCase().includes(searchText)
+    );
+    filteredOptions.forEach(option => selectElement.add(new Option(option, option)));
+
+    // Trigger change to update dependent dropdowns if applicable
+    if (selectId === 'continent-filter') {
+        updateCountryFilter();
+    } else if (selectId === 'country-filter') {
+        updateAirportSelects();
+    }
 }
 
 // --- 모드 전환 ---
@@ -170,13 +215,17 @@ function handleExampleClick() {
         destinationIata = airportIatas[Math.floor(Math.random() * airportIatas.length)];
     } while (originIata === destinationIata);
 
-    document.getElementById('origin').value = originIata;
-    document.getElementById('destination').value = destinationIata;
-    // Since the selects might be filtered, we need to reset them to show the example
+    // Reset filters and then set values
     document.getElementById('continent-filter').value = 'All';
+    document.getElementById('continent-search').value = '';
     updateCountryFilter();
     document.getElementById('country-filter').value = 'All';
+    document.getElementById('country-search').value = '';
     updateAirportSelects();
+    
+    document.getElementById('origin-search').value = '';
+    document.getElementById('destination-search').value = '';
+
     // Set the values again after populating
     document.getElementById('origin').value = originIata;
     document.getElementById('destination').value = destinationIata;
@@ -265,8 +314,8 @@ class Airplane {
             return;
         }
         this.curve = new THREE.CatmullRomCurve3(arcPoints);
-        const tubeGeometry = new THREE.TubeGeometry(this.curve, 64, 0.01, 8, false);
-        const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+        const tubeGeometry = new THREE.TubeGeometry(this.curve, 64, 0.015, 8, false); // Slightly wider
+        const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 }); // Slightly more opaque
         this.pathLine = new THREE.Mesh(tubeGeometry, tubeMaterial);
         this.pathLine.name = 'sim_path';
         scene.add(this.pathLine);
@@ -339,8 +388,10 @@ function visualizeArc(path, color, name) {
     if (curvePoints.length < 2) { return; }
     const pathCurve = new THREE.CatmullRomCurve3(curvePoints);
     const tubeRadius = (name === 'astar') ? 0.03 : 0.02;
+    const material = (name === 'astar') 
+        ? new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.9, emissive: color, emissiveIntensity: 0.3 }) 
+        : new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.8 });
     const geometry = new THREE.TubeGeometry(pathCurve, 256, tubeRadius, 8, false);
-    const material = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.8 });
     const arc = new THREE.Mesh(geometry, material);
     arc.name = name;
     scene.add(arc);
@@ -349,7 +400,7 @@ function visualizeArc(path, color, name) {
 function displayResults(astarDistance, directDistance, path) {
     const resultsPanel = document.getElementById('results-panel');
     const directKm = Math.round(directDistance);
-    let pathString = path.join(' → ');
+    let pathString = path.map(iata => airportsData[iata] ? `${airportsData[iata].name} (${iata})` : iata).join(' → ');
 
     if (astarDistance !== null) {
         const astarKm = Math.round(astarDistance);
