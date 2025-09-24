@@ -192,7 +192,7 @@ class Airplane {
         const endVec = latLonToVector3(destination.latitude, destination.longitude, 5);
         const mid = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
         const distance = startVec.distanceTo(endVec);
-        mid.setLength(5 + distance * 0.25); // 경로 높이 조절
+        mid.setLength(5 + distance * 0.1); // 경로 높이 조절 (조정됨)
         this.curve = new THREE.QuadraticBezierCurve3(startVec, mid, endVec);
     }
 
@@ -228,13 +228,14 @@ function visualizeArc(path, color, name) {
         const start = points[i];
         const end = points[i+1];
         const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-        const distance = start.distanceTo(end);
-        mid.setLength(5 + distance * 0.25); // 경로 높이 조절
-        const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+            const distance = start.distanceTo(end);
+            mid.setLength(5 + distance * 0.1); // 경로 높이 조절 (조정됨)
+            const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
         curvePoints.push(...curve.getPoints(50));
     }
     const pathCurve = new THREE.CatmullRomCurve3(curvePoints);
-    const geometry = new THREE.TubeGeometry(pathCurve, 64, 0.02, 8, false);
+    const tubeRadius = (name === 'astar') ? 0.03 : 0.02; // A* 경로를 더 두껍게
+    const geometry = new THREE.TubeGeometry(pathCurve, 64, tubeRadius, 8, false);
     const material = new THREE.MeshPhongMaterial({ color: color });
     const arc = new THREE.Mesh(geometry, material);
     arc.name = name;
