@@ -1,355 +1,137 @@
-/* --- 전역 변수 및 상수 --- */
-let airportsData = {};
-let airportList = []; // 시뮬레이션을 위한 공항 배열
-let map;
-let routeLayer; // 경로 탐색 모드용 레이어
-let simulationLayer; // 시뮬레이션 모드용 레이어
+// --- 기본 설정 ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 
-// 모드 관리
-let currentMode = 'sim'; // 'sim' 또는 'search'
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.getElementById('globe-container').appendChild(renderer.domElement);
 
-// 시뮬레이션 상태
-let isSimRunning = false;
-let airplanes = [];
-let simLoopId;
-const MAX_AIRPLANES = 50;
-let logCounter = 0;
-let simulationSpeedMultiplier = 1; // 시뮬레이션 속도 배율
+// --- 지구본 생성 ---
+const geometry = new THREE.SphereGeometry(5, 32, 32);
+const texture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/dataarts/webgl-globe/master/globe/world.jpg');
+const material = new THREE.MeshBasicMaterial({ map: texture });
+const earth = new THREE.Mesh(geometry, material);
+scene.add(earth);
 
-// --- 초기화 --- //
-document.addEventListener('DOMContentLoaded', () => {
-    initMap();
-    initUI();
-    loadAirports();
+camera.position.z = 15;
+
+// --- 애니메이션 ---
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// --- 창 크기 조절 ---
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-function initMap() {
-    map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(map);
-    simulationLayer = L.layerGroup().addTo(map);
-}
+// --- 공항 데이터 로드 및 UI 설정 ---
+let airportsData = {};
 
-function initUI() {
-    document.getElementById('mode-sim').addEventListener('click', () => switchMode('sim'));
-    document.getElementById('mode-search').addEventListener('click', () => switchMode('search'));
-    document.getElementById('calculate').addEventListener('click', calculateRoute);
-    document.getElementById('toggle-sim').addEventListener('click', toggleSimulation);
-    document.getElementById('airplane-count').addEventListener('input', e => {
-        const count = e.target.value;
-        document.getElementById('airplane-count-label').textContent = count;
-        adjustAirplaneCount(parseInt(count, 10));
-    });
-    document.getElementById('sim-speed').addEventListener('input', e => {
-        const speed = parseFloat(e.target.value);
-        document.getElementById('sim-speed-label').textContent = `${speed.toFixed(1)}x`;
-        simulationSpeedMultiplier = speed;
-    });
-    log('[System] UI 초기화 완료.');
-}
-
-async function loadAirports() {
-    log('[System] 공항 데이터 로딩 시작...');
-    try {
-        const response = await fetch('/airports');
-        if (!response.ok) throw new Error(`HTTP 오류!`);
-        const data = await response.json();
-        
-        airportList = data.filter(a => a.iata_code && a.airport_name && a.country_name && a.latitude != null && a.longitude != null);
-        airportList.sort((a, b) => a.airport_name.localeCompare(b.airport_name));
-
+fetch('/airports')
+    .then(response => response.json())
+    .then(data => {
         const originSelect = document.getElementById('origin');
         const destinationSelect = document.getElementById('destination');
-        originSelect.innerHTML = '<option selected disabled>공항 선택...</option>';
-        destinationSelect.innerHTML = '<option selected disabled>공항 선택...</option>';
-
-        airportList.forEach(airport => {
+        data.forEach(airport => {
             airportsData[airport.iata_code] = airport;
-            const option = document.createElement('option');
-            option.value = airport.iata_code;
-            option.textContent = `${airport.airport_name} (${airport.iata_code}) - ${airport.country_name}`;
-            originSelect.appendChild(option.cloneNode(true));
-            destinationSelect.appendChild(option);
+            const option = new Option(`${airport.airport_name} (${airport.iata_code})`, airport.iata_code);
+            originSelect.add(option.cloneNode(true));
+            destinationSelect.add(option);
         });
+    });
 
-        log(`[System] ${airportList.length}개 공항 데이터 로드 완료.`);
-        adjustAirplaneCount(parseInt(document.getElementById('airplane-count').value, 10));
+// --- 경로 계산 ---
+document.getElementById('calculate').addEventListener('click', () => {
+    const originIata = document.getElementById('origin').value;
+    const destinationIata = document.getElementById('destination').value;
 
-    } catch (error) {
-        log(`[Error] 공항 데이터 로드 실패: ${error.message}`);
-        console.error(error);
-    }
-}
-
-// --- 로깅 --- //
-function log(message) {
-    const logPanel = document.getElementById('sim-log-panel');
-    const timestamp = new Date().toLocaleTimeString();
-    const newMessage = document.createElement('p');
-    newMessage.innerHTML = `<code>[${timestamp}]</code> ${message}`;
-    logPanel.appendChild(newMessage);
-    // 로그가 너무 많아지면 스크롤을 맨 아래로 이동
-    logPanel.scrollTop = logPanel.scrollHeight;
-}
-
-// --- 모드 전환 --- //
-function switchMode(mode) {
-    currentMode = mode;
-    // ... (이하 기존 코드와 동일)
-}
-
-// --- 시뮬레이션 관리 --- //
-function toggleSimulation() {
-    isSimRunning = !isSimRunning;
-    const button = document.getElementById('toggle-sim');
-    if (isSimRunning) {
-        log('[System] 시뮬레이션 시작됨.');
-        button.textContent = '시뮬레이션 정지';
-        button.classList.replace('btn-success', 'btn-danger');
-        simulationLoop();
-    } else {
-        log('[System] 시뮬레이션 정지됨.');
-        button.textContent = '시뮬레이션 시작';
-        button.classList.replace('btn-danger', 'btn-success');
-        if (simLoopId) cancelAnimationFrame(simLoopId);
-    }
-}
-
-function adjustAirplaneCount(count) {
-    const difference = count - airplanes.length;
-    log(`[System] 항공기 수를 ${count}개로 조정합니다.`);
-    if (difference > 0) {
-        for (let i = 0; i < difference; i++) {
-            if (airplanes.length < MAX_AIRPLANES) {
-                airplanes.push(new Airplane(airplanes.length + 1));
-            }
-        }
-    } else {
-        for (let i = 0; i < -difference; i++) {
-            const airplane = airplanes.pop();
-            if (airplane) airplane.remove();
-        }
-    }
-}
-
-function simulationLoop() {
-    if (!isSimRunning) return;
-    
-    airplanes.forEach(airplane => airplane.update());
-
-    simLoopId = requestAnimationFrame(simulationLoop);
-}
-
-// --- 항공기 클래스 --- //
-
-function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371; // km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-        Math.sin(dLat/2) * Math.sin(dLat/2) +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-        Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-}
-
-class Airplane { // 이제 'AnimatedPath' 클래스 역할
-    constructor(id) {
-        this.id = id;
-        this.trail = null;
-        this.reset();
-    }
-
-    reset() {
-        if (this.trail) this.trail.remove();
-
-        let distance = 0;
-        const minDistance = 2000;
-
-        do {
-            this.origin = airportList[Math.floor(Math.random() * airportList.length)];
-            this.destination = airportList[Math.floor(Math.random() * airportList.length)];
-            if (this.origin && this.destination) {
-                distance = calculateHaversineDistance(
-                    this.origin.latitude, this.origin.longitude,
-                    this.destination.latitude, this.destination.longitude
-                );
-            }
-        } while (!this.origin || !this.destination || this.origin.iata_code === this.destination.iata_code || distance < minDistance);
-
-        log(`[Path #${this.id}] 새 경로 생성: ${this.origin.iata_code} → ${this.destination.iata_code} (${Math.round(distance)}km)`);
-
-        this.path = getGreatCirclePoints(
-            [this.origin.latitude, this.origin.longitude],
-            [this.destination.latitude, this.destination.longitude]
-        );
-        this.progress = 0;
-        // 속도를 이전보다 약간 빠르게 조정하여 경로가 그려지는 느낌을 개선
-        this.speed = (0.001 + Math.random() * 0.004) / 2; 
-
-        this.trail = L.polyline([], { color: '#ff00ff', weight: 2, opacity: 0.6 }).addTo(simulationLayer);
-    }
-
-    update() {
-        if (this.progress >= 1) return; // 이미 다 그려졌으면 업데이트 중지
-
-        this.progress += this.speed * simulationSpeedMultiplier;
-
-        if (this.progress >= 1) {
-            this.progress = 1; // 정확히 1로 맞춤
-            // 경로가 다 그려지면 잠시 후 사라지고 리셋
-            setTimeout(() => this.reset(), 1000);
-        }
-        
-        const pointsToShow = Math.floor(this.progress * this.path.length);
-        const visiblePath = this.path.slice(0, pointsToShow);
-        
-        if(visiblePath.length > 0) {
-            this.trail.setLatLngs(visiblePath);
-        }
-    }
-
-    logStatus() {
-        log(`[Path #${this.id}] Status: ${(this.progress * 100).toFixed(1)}%`);
-    }
-
-    remove() {
-        if (this.trail) this.trail.remove();
-        this.trail = null;
-    }
-}
-
-// --- 기존 경로 탐색 함수들 (수정 없음) --- //
-// ... calculateRoute, drawRoutePath, getFullPathPoints, getGreatCirclePoints ...
-// (이 부분은 이전 버전과 동일하여 생략합니다)
-
-// --- 기존 코드 붙여넣기 --- //
-
-function switchMode(mode) {
-    currentMode = mode;
-    const simButton = document.getElementById('mode-sim');
-    const searchButton = document.getElementById('mode-search');
-    const simControls = document.getElementById('sim-controls');
-    const searchPanel = document.getElementById('search-panel');
-    const resultDiv = document.getElementById('result');
-
-    if (mode === 'sim') {
-        simButton.classList.add('active');
-        searchButton.classList.remove('active');
-        simControls.style.display = 'block';
-        searchPanel.style.display = 'none';
-        resultDiv.innerHTML = '';
-        if (routeLayer) routeLayer.clearLayers();
-        simulationLayer.addTo(map); // 시뮬레이션 레이어 보이기
-    } else { // search 모드
-        simButton.classList.remove('active');
-        searchButton.classList.add('active');
-        simControls.style.display = 'none';
-        searchPanel.style.display = 'block';
-        if (isSimRunning) toggleSimulation(); // 시뮬레이션 자동 정지
-        simulationLayer.removeFrom(map); // 시뮬레이션 레이어 숨기기
-    }
-}
-
-async function calculateRoute() {
-    const origin = document.getElementById('origin').value;
-    const destination = document.getElementById('destination').value;
-    const resultDiv = document.getElementById('result');
-    const calculateBtn = document.getElementById('calculate');
-
-    if (!origin || !destination || origin === '공항 선택...' || destination === '공항 선택...') return;
-
-    resultDiv.innerHTML = '';
-    calculateBtn.disabled = true;
-    calculateBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> A* 탐색 중...`;
-
-    try {
-        const response = await fetch('/calculate_route', {
+    if (originIata && destinationIata) {
+        fetch('/calculate_route', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ origin, destination })
+            body: JSON.stringify({ origin: originIata, destination: destinationIata })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.path) {
+                visualizePath(data.path);
+            }
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `HTTP 오류!`);
-
-        const pathInfo = data.path.length > 2 ? `${data.path.length - 2}곳을 경유하는` : '직항';
-        resultDiv.innerHTML = `<div class="alert alert-success"><strong>탐색 완료!</strong> ${pathInfo} 최단 경로의 총 거리는 <strong>${Math.round(data.total_distance)}km</strong> 입니다.</div>`;
-        drawRoutePath(data.path);
-
-    } catch (error) {
-        resultDiv.innerHTML = `<div class="alert alert-danger"><strong>오류:</strong> 경로 탐색에 실패했습니다. ${error.message}</div>`;
-    } finally {
-        calculateBtn.disabled = false;
-        calculateBtn.innerHTML = '경로 계산';
     }
+});
+
+// --- 위도/경도를 3D 좌표로 변환 ---
+function latLonToVector3(lat, lon, radius) {
+    const phi = (90 - lat) * (Math.PI / 180);
+    const theta = (lon + 180) * (Math.PI / 180);
+
+    const x = -(radius * Math.sin(phi) * Math.cos(theta));
+    const y = radius * Math.cos(phi);
+    const z = radius * Math.sin(phi) * Math.sin(theta);
+
+    return new THREE.Vector3(x, y, z);
 }
 
-function drawRoutePath(path) {
-    if (!routeLayer) {
-        routeLayer = L.layerGroup().addTo(map);
-    } else {
-        routeLayer.clearLayers();
+function visualizePath(path) {
+    // 이전 경로 및 비행기 삭제
+    const oldPath = scene.getObjectByName('flightPath');
+    if (oldPath) {
+        scene.remove(oldPath);
+        oldPath.geometry.dispose();
+        oldPath.material.dispose();
     }
-    if (simLoopId) cancelAnimationFrame(simLoopId); // 경로 탐색 시 애니메이션 정지
+    if (airplane) {
+        scene.remove(airplane);
+        airplane.geometry.dispose();
+        airplane.material.dispose();
+        airplane = null;
+    }
+    flightPathCurve = null;
+    flightProgress = 0;
 
-    const pathCoords = path.map(iata => {
+    const points = [];
+    for (const iata of path) {
         const airport = airportsData[iata];
-        return [airport.latitude, airport.longitude];
-    });
-
-    path.forEach((iata, index) => {
-        const airport = airportsData[iata];
-        let markerPopup = `<b>${airport.airport_name}</b>`;
-        if (index === 0) markerPopup = `<b>출발:</b> ${airport.airport_name}`;
-        else if (index === path.length - 1) markerPopup = `<b>도착:</b> ${airport.airport_name}`;
-        else markerPopup = `<b>경유:</b> ${airport.airport_name}`;
-
-        L.marker([airport.latitude, airport.longitude]).addTo(routeLayer).bindPopup(markerPopup);
-    });
-
-    const fullPathPoints = getFullPathPoints(pathCoords);
-    
-    L.polyline(fullPathPoints, { color: '#87cefa', weight: 3 }).addTo(routeLayer);
-    
-    map.fitBounds(pathCoords, { padding: [50, 50] });
-}
-
-function getFullPathPoints(pathCoords) {
-    let allPoints = [];
-    for (let i = 0; i < pathCoords.length - 1; i++) {
-        const segmentPoints = getGreatCirclePoints(pathCoords[i], pathCoords[i+1]);
-        allPoints = allPoints.concat(segmentPoints);
-    }
-    return allPoints;
-}
-
-function getGreatCirclePoints(start, end) {
-    const latlngs = [];
-    const startLat = start[0] * Math.PI / 180, startLng = start[1] * Math.PI / 180;
-    const endLat = end[0] * Math.PI / 180, endLng = end[1] * Math.PI / 180;
-    const d = 2 * Math.asin(Math.sqrt(Math.pow(Math.sin((startLat - endLat) / 2), 2) + Math.cos(startLat) * Math.cos(endLat) * Math.pow(Math.sin((startLng - endLng) / 2), 2)));
-    const steps = 100; // 경로를 더 부드럽게
-
-    for (let i = 0; i <= steps; i++) {
-        const f = i / steps;
-        if (Math.sin(d) === 0) {
-            const lat = (start[0] + f * (end[0] - start[0]));
-            const lng = (start[1] + f * (end[1] - start[1]));
-            latlngs.push([lat, lng]);
-            continue;
+        if (airport) {
+            points.push(latLonToVector3(airport.latitude, airport.longitude, 5));
         }
-        const A = Math.sin((1 - f) * d) / Math.sin(d);
-        const B = Math.sin(f * d) / Math.sin(d);
-        const x = A * Math.cos(startLat) * Math.cos(startLng) + B * Math.cos(endLat) * Math.cos(endLng);
-        const y = A * Math.cos(startLat) * Math.sin(startLng) + B * Math.cos(endLat) * Math.sin(endLng);
-        const z = A * Math.sin(startLat) + B * Math.sin(endLat);
-        const lat = Math.atan2(z, Math.sqrt(x*x + y*y)) * 180 / Math.PI;
-        const lng = Math.atan2(y, x) * 180 / Math.PI;
-        latlngs.push([lat, lng]);
     }
-    return latlngs;
+
+    if (points.length > 1) {
+        const curvePoints = [];
+        for (let i = 0; i < points.length - 1; i++) {
+            const start = points[i];
+            const end = points[i+1];
+            
+            const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+            const distance = start.distanceTo(end);
+            mid.setLength(5 + distance * 0.2); // 호의 높이를 조절
+
+            const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+            curvePoints.push(...curve.getPoints(50));
+        }
+
+        // 전체 경로를 하나의 커브로 만듦
+        flightPathCurve = new THREE.CatmullRomCurve3(curvePoints);
+
+        const geometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+        const material = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+        const flightPathLine = new THREE.Line(geometry, material);
+        flightPathLine.name = 'flightPath';
+        scene.add(flightPathLine);
+
+        // 비행기 생성
+        const planeGeometry = new THREE.ConeGeometry(0.1, 0.3, 8);
+        planeGeometry.rotateX(Math.PI / 2);
+        const planeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        airplane = new THREE.Mesh(planeGeometry, planeMaterial);
+        scene.add(airplane);
+    }
 }
