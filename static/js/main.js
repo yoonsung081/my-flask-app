@@ -137,14 +137,8 @@ function adjustAirplaneCount(count) {
 
 function simulationLoop() {
     if (!isSimRunning) return;
-    logCounter++;
-    airplanes.forEach((airplane, index) => {
-        airplane.update();
-        // 모든 비행기를 로그에 남기면 너무 많으므로, 0번 인덱스 비행기만 60프레임마다 로그
-        if (index === 0 && logCounter % 60 === 0) {
-            airplane.logStatus();
-        }
-    });
+    
+    airplanes.forEach(airplane => airplane.update());
 
     simLoopId = requestAnimationFrame(simulationLoop);
 }
@@ -163,24 +157,22 @@ function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-class Airplane {
+class Airplane { // 이제 'AnimatedPath' 클래스 역할
     constructor(id) {
         this.id = id;
-        this.marker = null;
         this.trail = null;
         this.reset();
     }
 
     reset() {
-        if (this.marker) this.remove();
+        if (this.trail) this.trail.remove();
 
         let distance = 0;
-        const minDistance = 2000; // 최소 비행 거리 (km)
+        const minDistance = 2000;
 
         do {
             this.origin = airportList[Math.floor(Math.random() * airportList.length)];
             this.destination = airportList[Math.floor(Math.random() * airportList.length)];
-            
             if (this.origin && this.destination) {
                 distance = calculateHaversineDistance(
                     this.origin.latitude, this.origin.longitude,
@@ -189,75 +181,44 @@ class Airplane {
             }
         } while (!this.origin || !this.destination || this.origin.iata_code === this.destination.iata_code || distance < minDistance);
 
-        log(`[Airplane #${this.id}] 새 경로 할당: ${this.origin.iata_code} → ${this.destination.iata_code} (${Math.round(distance)}km)`);
+        log(`[Path #${this.id}] 새 경로 생성: ${this.origin.iata_code} → ${this.destination.iata_code} (${Math.round(distance)}km)`);
 
         this.path = getGreatCirclePoints(
             [this.origin.latitude, this.origin.longitude],
             [this.destination.latitude, this.destination.longitude]
         );
-        this.routeProgress = 0;
-        this.planeProgress = 0;
-        this.speed = (0.001 + Math.random() * 0.004) / 5; // 속도 대폭 줄임
+        this.progress = 0;
+        // 속도를 이전보다 약간 빠르게 조정하여 경로가 그려지는 느낌을 개선
+        this.speed = (0.001 + Math.random() * 0.004) / 2; 
 
-        this.createMarker();
-        this.trail = L.polyline([], { color: '#ff00ff', weight: 1, opacity: 0.3, className: 'airplane-trail' }).addTo(simulationLayer);
-    }
-
-    createMarker() {
-        const icon = L.divIcon({
-            html: `<svg class="airplane-icon" width="24" height="24"><use href="#airplane-symbol"></use></svg>`,
-            className: '',
-            iconSize: [24, 24],
-            iconAnchor: [12, 12]
-        });
-        this.marker = L.marker([this.origin.latitude, this.origin.longitude], { icon }).addTo(simulationLayer);
+        this.trail = L.polyline([], { color: '#ff00ff', weight: 2, opacity: 0.6 }).addTo(simulationLayer);
     }
 
     update() {
-        // 경로와 비행기 속도를 분리
-        const speedIncrement = this.speed * simulationSpeedMultiplier;
-        this.routeProgress = Math.min(1, this.routeProgress + speedIncrement); // 경로(꼬리)는 정상적으로 진행
-        this.planeProgress = Math.min(1, this.planeProgress + speedIncrement * 0.95); // 비행기(아이콘)는 약간 느리게
+        if (this.progress >= 1) return; // 이미 다 그려졌으면 업데이트 중지
 
-        if (this.routeProgress >= 1) {
-            log(`[Airplane #${this.id}] 목적지 ${this.destination.iata_code} 도착. `);
-            this.reset();
-            return;
+        this.progress += this.speed * simulationSpeedMultiplier;
+
+        if (this.progress >= 1) {
+            this.progress = 1; // 정확히 1로 맞춤
+            // 경로가 다 그려지면 잠시 후 사라지고 리셋
+            setTimeout(() => this.reset(), 1000);
         }
-
-        // 경로 꼬리 업데이트
-        const routePathIndex = Math.floor(this.routeProgress * (this.path.length - 1));
-        const trailPos = this.path[routePathIndex];
-        if(trailPos) this.trail.addLatLng(trailPos);
-
-        // 비행기 아이콘 위치 및 각도 업데이트
-        const planePathIndex = Math.floor(this.planeProgress * (this.path.length - 1));
-        const nextPlaneIndex = Math.min(this.path.length - 1, planePathIndex + 1);
-
-        const currentPos = this.path[planePathIndex];
-        const nextPos = this.path[nextPlaneIndex];
-
-        if (!currentPos || !nextPos) return; // 경로 데이터가 없으면 중단
-
-        this.marker.setLatLng(currentPos);
-
-        const angle = Math.atan2(nextPos[0] - currentPos[0], nextPos[1] - currentPos[1]) * 180 / Math.PI;
-        if (this.marker._icon) {
-            this.marker._icon.style.transformOrigin = 'center';
-            this.marker._icon.style.transform = `rotate(${angle + 90}deg)`;
+        
+        const pointsToShow = Math.floor(this.progress * this.path.length);
+        const visiblePath = this.path.slice(0, pointsToShow);
+        
+        if(visiblePath.length > 0) {
+            this.trail.setLatLngs(visiblePath);
         }
     }
 
     logStatus() {
-        if (!this.marker) return;
-        const pos = this.marker.getLatLng();
-        log(`[Airplane #${this.id}] Status: ${(this.planeProgress * 100).toFixed(1)}% | Pos: ${pos.lat.toFixed(2)}, ${pos.lng.toFixed(2)}`);
+        log(`[Path #${this.id}] Status: ${(this.progress * 100).toFixed(1)}%`);
     }
 
     remove() {
-        if (this.marker) simulationLayer.removeLayer(this.marker);
-        if (this.trail) simulationLayer.removeLayer(this.trail);
-        this.marker = null;
+        if (this.trail) this.trail.remove();
         this.trail = null;
     }
 }
