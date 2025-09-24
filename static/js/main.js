@@ -139,11 +139,15 @@ function calculateAndVisualize(originIata, destinationIata) {
     .then(data => {
         clearScene();
         if (data.path) {
+            // A* 경로 시각화
             visualizeArc(data.path, 0x28a745, 'astar');
+
+            // 비교를 위한 직선 경로 시각화
             const directPath = [originIata, destinationIata];
-            const directDistance = haversineDistance(airportsData[originIata], airportsData[destinationIata]);
             visualizeArc(directPath, 0xffc107, 'direct');
-            displayResults(data.total_distance, directDistance);
+            
+            // 서버에서 받은 데이터로 결과 표시
+            displayResults(data.astar_distance, data.direct_distance);
         }
     });
 }
@@ -182,35 +186,62 @@ function restartSimulation() {
 
 class Airplane {
     constructor(origin, destination) {
-        this.speed = (Math.random() * 0.5 + 0.5) * 0.001;
-        this.setupPath(origin, destination);
-        const geometry = new THREE.ConeGeometry(0.05, 0.2, 8);
+        this.speed = (Math.random() * 0.4 + 0.2) * 0.002; // Adjusted speed
+        
+        const geometry = new THREE.ConeGeometry(0.03, 0.15, 8); // Slightly smaller
         geometry.rotateX(Math.PI / 2);
         const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
         this.mesh = new THREE.Mesh(geometry, material);
         scene.add(this.mesh);
-        this.progress = 0;
+
+        this.pathLine = null; // Initialize pathLine property
+        this.setupPath(origin, destination);
+        this.progress = Math.random(); // Start at a random point in the path
     }
 
     setupPath(origin, destination) {
+        // If a line for the old path exists, remove it
+        if (this.pathLine) {
+            scene.remove(this.pathLine);
+            this.pathLine.geometry.dispose();
+            this.pathLine.material.dispose();
+        }
+
         this.origin = origin;
         this.destination = destination;
         const startVec = latLonToVector3(origin.latitude, origin.longitude, 5);
         const endVec = latLonToVector3(destination.latitude, destination.longitude, 5);
-        const mid = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
-        const distance = startVec.distanceTo(endVec);
-        mid.setLength(5 + distance * 0.2); // 경로 높이 조절 (수정됨)
-        this.curve = new THREE.QuadraticBezierCurve3(startVec, mid, endVec);
+        const arcPoints = createGreatCircleArc(startVec, endVec);
+
+        if (arcPoints.length < 2) {
+            this.curve = null;
+            this.pathLine = null;
+            return;
+        }
+
+        this.curve = new THREE.CatmullRomCurve3(arcPoints);
+        const tubeGeometry = new THREE.TubeGeometry(this.curve, 64, 0.01, 8, false);
+        const tubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 });
+        this.pathLine = new THREE.Mesh(tubeGeometry, tubeMaterial);
+        this.pathLine.name = 'sim_path';
+        scene.add(this.pathLine);
     }
 
     update() {
+        if (!this.curve) {
+            this.reset();
+            return;
+        }
         this.progress += this.speed * simulationSpeed;
         if (this.progress >= 1) {
-            this.reset();
+            this.progress = 0; // Loop back
+            this.reset(); // Or get a new path
             return;
         }
         const newPosition = this.curve.getPointAt(this.progress);
         this.mesh.position.copy(newPosition);
+        
+        // Make the plane point forward along the curve
         const nextPoint = this.curve.getPointAt(Math.min(this.progress + 0.001, 1));
         this.mesh.lookAt(nextPoint);
     }
@@ -218,32 +249,73 @@ class Airplane {
     reset() {
         this.progress = 0;
         const airportIatas = Object.keys(airportsData);
-        const newOrigin = airportsData[airportIatas[Math.floor(Math.random() * airportIatas.length)]];
-        let newDestination = airportsData[airportIatas[Math.floor(Math.random() * airportIatas.length)]];
-        while(!newDestination || newOrigin.iata_code === newDestination.iata_code) {
+        let newOrigin, newDestination;
+        
+        do {
+            newOrigin = airportsData[airportIatas[Math.floor(Math.random() * airportIatas.length)]];
             newDestination = airportsData[airportIatas[Math.floor(Math.random() * airportIatas.length)]];
-        }
+        } while (!newOrigin || !newDestination || newOrigin.iata_code === newDestination.iata_code);
+
         this.setupPath(newOrigin, newDestination);
     }
 }
 
 // --- 렌더링 및 유틸리티 함수 ---
+function createGreatCircleArc(startVec, endVec) {
+    const numPoints = 50;
+    const points = [];
+    const startUnit = startVec.clone().normalize();
+    const endUnit = endVec.clone().normalize();
+
+    let axis = new THREE.Vector3().crossVectors(startUnit, endUnit).normalize();
+    
+    // Handle cases where vectors are collinear
+    if (isNaN(axis.x) || isNaN(axis.y) || isNaN(axis.z)) {
+        if (startUnit.distanceTo(endUnit) < 0.001) { // Same point
+            return [startVec];
+        }
+        // Opposite points
+        const nonCollinearVec = (Math.abs(startUnit.x) < 0.9) ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+        axis = new THREE.Vector3().crossVectors(startUnit, nonCollinearVec).normalize();
+    }
+
+    const angle = startUnit.angleTo(endUnit);
+    const distance = startVec.distanceTo(endVec);
+    const maxHeight = Math.max(0.05, distance * 0.2); // Control the height of the arc, with a minimum height
+
+    for (let i = 0; i <= numPoints; i++) {
+        const t = i / numPoints;
+        const rotation = new THREE.Quaternion().setFromAxisAngle(axis, angle * t);
+        const point = startVec.clone().applyQuaternion(rotation);
+        
+        // Add height that peaks in the middle of the arc
+        const height = maxHeight * Math.sin(t * Math.PI);
+        point.setLength(5 + height); // 5 is the radius of the globe
+        points.push(point);
+    }
+    return points;
+}
+
 function visualizeArc(path, color, name) {
     const points = path.map(iata => latLonToVector3(airportsData[iata].latitude, airportsData[iata].longitude, 5));
     const curvePoints = [];
     for (let i = 0; i < points.length - 1; i++) {
         const start = points[i];
         const end = points[i+1];
-        const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-            const distance = start.distanceTo(end);
-            mid.setLength(5 + distance * 0.2); // 경로 높이 조절 (수정됨)
-            const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-        curvePoints.push(...curve.getPoints(50));
+        const arcPoints = createGreatCircleArc(start, end);
+        // Avoid duplicating points at the junctions of segments
+        curvePoints.push(...(i > 0 ? arcPoints.slice(1) : arcPoints));
     }
+
+    if (curvePoints.length < 2) {
+        console.warn("Not enough points to create a curve for path:", path);
+        return;
+    }
+
     const pathCurve = new THREE.CatmullRomCurve3(curvePoints);
     const tubeRadius = (name === 'astar') ? 0.03 : 0.02; // A* 경로를 더 두껍게
-    const geometry = new THREE.TubeGeometry(pathCurve, 64, tubeRadius, 8, false);
-    const material = new THREE.MeshPhongMaterial({ color: color });
+    const geometry = new THREE.TubeGeometry(pathCurve, 256, tubeRadius, 8, false); // Increased segments for smoothness
+    const material = new THREE.MeshPhongMaterial({ color: color, transparent: true, opacity: 0.8 });
     const arc = new THREE.Mesh(geometry, material);
     arc.name = name;
     scene.add(arc);
@@ -251,14 +323,32 @@ function visualizeArc(path, color, name) {
 
 function displayResults(astarDistance, directDistance) {
     const resultsPanel = document.getElementById('results-panel');
-    const astarKm = Math.round(astarDistance);
     const directKm = Math.round(directDistance);
-    const difference = Math.round(directDistance - astarDistance);
-    resultsPanel.innerHTML = `
-        <div class="path-result astar-path"><strong>A* 경로:</strong> ${astarKm} km</div>
-        <div class="path-result direct-path"><strong>대권 항로:</strong> ${directKm} km</div>
-        <p class="text-center mt-3">A* 알고리즘을 통해 약 <strong>${difference} km</strong> 더 효율적인 경로를 찾았습니다.</p>
-    `;
+
+    if (astarDistance !== null) {
+        const astarKm = Math.round(astarDistance);
+        const difference = Math.round(directKm - astarKm);
+
+        if (difference > 0) {
+            resultsPanel.innerHTML = `
+                <div class="path-result astar-path"><strong>A* 효율 비용:</strong> ${astarKm} units</div>
+                <div class="path-result direct-path"><strong>직선 거리 비용:</strong> ${directKm} units</div>
+                <p class="text-center mt-3">A* 알고리즘이 <strong>${difference} units</strong> 만큼 더 효율적인 경로를 찾았습니다.</p>
+                <small class="d-block text-center text-muted mt-2">(효율 비용은 연료, 항로 이용료 등을 종합한 가상 단위입니다)</small>
+            `;
+        } else {
+             resultsPanel.innerHTML = `
+                <div class="path-result astar-path"><strong>A* 경로 비용:</strong> ${astarKm} units</div>
+                <div class="path-result direct-path"><strong>직선 거리 비용:</strong> ${directKm} units</div>
+                <p class="text-center mt-3">이 구간은 직선 항로가 더 효율적입니다.</p>
+            `;
+        }
+    } else {
+        resultsPanel.innerHTML = `
+            <div class="path-result direct-path"><strong>직선 거리:</strong> ${directKm} km</div>
+            <p class="text-center mt-3">탐색 가능한 A* 경로가 없습니다.</p>
+        `;
+    }
 }
 
 function latLonToVector3(lat, lon, radius) {
@@ -286,15 +376,21 @@ function haversineDistance(airport1, airport2) {
 function clearScene() {
     for (let i = scene.children.length - 1; i >= 0; i--) {
         const obj = scene.children[i];
-        if (obj.name === 'astar' || obj.name === 'direct') {
+        // 경로 탐색(astar, direct) 또는 시뮬레이션(sim_path)으로 생성된 모든 경로 라인을 제거
+        if (obj.type === 'Mesh' && (obj.name === 'astar' || obj.name === 'direct' || obj.name === 'sim_path')) {
             scene.remove(obj);
             obj.geometry.dispose();
             obj.material.dispose();
         }
     }
+
+    // 모든 비행기 메시를 제거하고 리소스를 해제
     airplanes.forEach(plane => {
-        scene.remove(plane.mesh);
-        if (plane.pathLine) scene.remove(plane.pathLine);
+        if (plane.mesh) {
+            scene.remove(plane.mesh);
+            plane.mesh.geometry.dispose();
+            plane.mesh.material.dispose();
+        }
     });
     airplanes = [];
 }

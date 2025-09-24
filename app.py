@@ -51,7 +51,9 @@ def load_airports_and_build_graph():
         return
 
     # 2. 가상 항공 네트워크(그래프) 구축
-    max_dist = 1000  # 직항으로 간주할 최대 거리 (km)
+    max_dist = 2500  # 직항으로 간주할 최대 거리 (km) - 범위를 늘려 더 많은 경로 탐색
+    efficiency_factor = 0.7  # 효율성 가중치 (예: 기존 항로는 30% 비용 절감)
+
     for i, airport1 in enumerate(temp_airports_list):
         iata1 = airport1['iata_code']
         if iata1 not in airport_graph:
@@ -65,8 +67,10 @@ def load_airports_and_build_graph():
             if dist <= max_dist:
                 if iata2 not in airport_graph:
                     airport_graph[iata2] = []
-                airport_graph[iata1].append((iata2, dist))
-                airport_graph[iata2].append((iata1, dist))
+                # 그래프에는 실제 거리가 아닌 '효율성이 적용된 비용'을 저장
+                efficient_dist = dist * efficiency_factor
+                airport_graph[iata1].append((iata2, efficient_dist))
+                airport_graph[iata2].append((iata1, efficient_dist))
     
     print(f"초기화 완료: {len(airports_data)}개 공항, {sum(len(v) for v in airport_graph.values()) // 2}개 노선 생성")
 
@@ -127,14 +131,29 @@ def calculate_route():
     if not origin_iata or not destination_iata:
         return jsonify({"error": "출발지 또는 목적지가 유효하지 않습니다."}), 400
 
-    path, total_distance = a_star_search(origin_iata, destination_iata)
+    # A* 알고리즘은 '효율성 가중치'가 적용된 비용으로 경로를 탐색
+    path, astar_cost = a_star_search(origin_iata, destination_iata)
+
+    # 비교를 위한 순수 직선 거리 계산
+    direct_distance = calculate_haversine_distance(
+        airports_data[origin_iata]['latitude'], airports_data[origin_iata]['longitude'],
+        airports_data[destination_iata]['latitude'], airports_data[destination_iata]['longitude']
+    )
 
     if path:
-        return jsonify({"path": path, "total_distance": total_distance})
+        return jsonify({
+            "path": path, 
+            "astar_distance": astar_cost,  # A*가 계산한 효율적인 비용
+            "direct_distance": direct_distance # 비교를 위한 실제 직선 거리
+        })
     else:
-        # A*가 경로를 찾지 못한 경우, 직접 연결을 시도 (대권 항로)
-        dist = calculate_haversine_distance(airports_data[origin_iata]['latitude'], airports_data[origin_iata]['longitude'], airports_data[destination_iata]['latitude'], airports_data[destination_iata]['longitude'])
-        return jsonify({"path": [origin_iata, destination_iata], "total_distance": dist, "message": "직항 경로만 찾았습니다 (A* 경로 없음)"})
+        # A*가 경로를 찾지 못한 경우
+        return jsonify({
+            "path": [origin_iata, destination_iata], 
+            "astar_distance": None, 
+            "direct_distance": direct_distance,
+            "message": "직항 경로만 찾았습니다 (A* 경로 없음)"
+        })
 
 # --- 서버 실행 --- #
 
